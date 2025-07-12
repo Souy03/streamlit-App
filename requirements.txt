@@ -7,10 +7,9 @@ Pillow>=10.0.0
 opencv-python>=4.8.0  # Normale Version für Windows
 
 # PyTorch für Windows
-torch>=2.0.0
 torchvision>=0.15.0
 # Für CUDA Support auf Windows (optional):
-# torch==2.0.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
+torch==2.0.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
 
 # Diffusion support
 diffusers>=0.24.0
