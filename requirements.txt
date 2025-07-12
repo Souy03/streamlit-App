@@ -1,35 +1,21 @@
-# Core dependencies
-streamlit>=1.28.0
-pandas>=1.5.0
-numpy>=1.24.0
-tensorflow>=2.13.0  # Normale Version für Windows
-Pillow>=10.0.0
-opencv-python>=4.8.0  # Normale Version für Windows
-
-# PyTorch für Windows
-torchvision>=0.15.0
-# Für CUDA Support auf Windows (optional):
-torch==2.0.1+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
-
-# Diffusion support
-diffusers>=0.24.0
-transformers>=4.35.0
-accelerate>=0.24.0
-safetensors>=0.4.0
-
-# API support
-requests>=2.31.0
-
-# Memory monitoring
-psutil>=5.9.0
-
-# Image processing
-scipy>=1.10.0
-scikit-image>=0.21.0
-
-# Utilities
-tqdm>=4.65.0
-python-dateutil>=2.8.2
-
-# Optional
-huggingface-hub>=0.19.0
+--extra-index-url https://download.pytorch.org/whl/cpu
+streamlit==1.45.1
+tensorflow-cpu==2.16.2
+torch==2.1.2+cpu
+torchvision==0.16.2+cpu
+diffusers==0.34.0
+transformers==4.51.3
+huggingface_hub==0.32.4
+opencv-python==4.11.0.86
+Pillow==11.2.1
+scikit-image==0.25.2
+matplotlib==3.10.3
+tqdm==4.67.1
+pandas==2.2.3
+numpy==1.26.4
+accelerate==0.27.2
+safetensors==0.5.3
+python-dateutil==2.9.0
+requests==2.32.4
+psutil==5.9.8
+protobuf==3.20.3
