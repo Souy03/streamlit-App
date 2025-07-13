@@ -1417,7 +1417,7 @@ def main():
     
     # Header
     st.markdown("""
-    <div class="main-header">🏃‍♀️ Fashion Swipe Studio</div>
+    <div class="main-header"> Fashion Swipe Studio</div>
     <div class="sub-header">Professionelle Diffusion Models & Bunte Datasets!</div>
     """, unsafe_allow_html=True)
     
