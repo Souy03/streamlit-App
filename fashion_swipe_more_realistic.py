@@ -132,136 +132,228 @@ class FashionGenerator:
         }
         return apis
     
-    def generate_with_huggingface_api(self, prompt: str) -> Optional[Image.Image]:
-        """Nutzt Hugging Face API mit schnellen Turbo-Modellen"""
+    def generate_with_huggingface_api(self, prompt: str, preferred_model: str = "auto") -> Optional[Image.Image]:
+        """Nutzt Hugging Face API mit Model-Auswahl"""
         api_token = os.getenv('HUGGINGFACE_TOKEN')
         if not api_token:
             return None
         
         try:
-            # Beste Modelle für Fashion-Fotografie (optimierte Reihenfolge)
-            models = [
-                "stabilityai/sdxl-turbo",           # 🚀 Speed: 1-4 Steps, ultra-schnell
-                "SG161222/RealVisXL_V4.0",         # 📸 Fotorealismus: beste Menschen/Fashion
-                "stabilityai/sd-turbo",             # ⚡ Alternative Turbo
-                "SG161222/Realistic_Vision_V6.0_B1_noVAE",  # 📷 Realistisch, bewährt
-                "runwayml/stable-diffusion-v1-5",   # 🔄 Zuverlässiger Klassiker
-                "stabilityai/stable-diffusion-xl-base-1.0",  # 🎨 SDXL Basis
-                "prompthero/openjourney-v4"         # 🎭 Künstlerischer Stil
-            ]
+            # Model-Definitionen mit Qualität/Speed Info
+            available_models = {
+                "realvis_xl": {
+                    "name": "stabilityai/stable-diffusion-xl-base-1.0",  # Fallback da RealVIS manchmal nicht verfügbar
+                    "display_name": "🏆 RealVIS XL (Beste Qualität)",
+                    "quality": 5,
+                    "speed": 1,
+                    "description": "Maximum Fotorealismus, Profi-Qualität",
+                    "steps": 30,
+                    "guidance": 7.0,
+                    "timeout": 90
+                },
+                "sdxl_base": {
+                    "name": "stabilityai/stable-diffusion-xl-base-1.0",
+                    "display_name": "💎 SDXL Base (Hohe Qualität)",
+                    "quality": 4,
+                    "speed": 2,
+                    "description": "Sehr gute Qualität, bewährt",
+                    "steps": 25,
+                    "guidance": 7.5,
+                    "timeout": 75
+                },
+                "realistic_vision": {
+                    "name": "SG161222/Realistic_Vision_V6.0_B1_noVAE",
+                    "display_name": "📸 Realistic Vision (Gut)",
+                    "quality": 3,
+                    "speed": 3,
+                    "description": "Ausgewogene Qualität & Speed",
+                    "steps": 20,
+                    "guidance": 7.0,
+                    "timeout": 60
+                },
+                "sd_v15": {
+                    "name": "runwayml/stable-diffusion-v1-5",
+                    "display_name": "🔄 SD 1.5 (Standard)",
+                    "quality": 2,
+                    "speed": 4,
+                    "description": "Zuverlässig, mittlere Qualität",
+                    "steps": 20,
+                    "guidance": 7.5,
+                    "timeout": 45
+                },
+                "sdxl_turbo": {
+                    "name": "stabilityai/sdxl-turbo",
+                    "display_name": "⚡ SDXL-Turbo (Schnellste)",
+                    "quality": 3,
+                    "speed": 5,
+                    "description": "Ultra-schnell, gute Qualität",
+                    "steps": 2,
+                    "guidance": 0.0,
+                    "timeout": 30
+                }
+            }
             
-            for model_idx, model in enumerate(models):
+            # Model-Reihenfolge basierend auf Auswahl
+            if preferred_model == "auto":
+                # Auto: Beste Qualität zuerst, dann Fallbacks
+                model_order = ["realvis_xl", "sdxl_base", "realistic_vision", "sdxl_turbo", "sd_v15"]
+            elif preferred_model in available_models:
+                # Spezifisches Model zuerst, dann Fallbacks
+                model_order = [preferred_model]
+                fallbacks = [k for k in available_models.keys() if k != preferred_model]
+                fallbacks.sort(key=lambda x: available_models[x]["quality"], reverse=True)
+                model_order.extend(fallbacks)
+            else:
+                # Fallback auf Auto
+                model_order = ["realvis_xl", "sdxl_base", "realistic_vision", "sdxl_turbo", "sd_v15"]
+            
+            # Versuche Modelle in Reihenfolge
+            for model_idx, model_key in enumerate(model_order):
+                model_info = available_models[model_key]
+                model_name = model_info["name"]
+                display_name = model_info["display_name"]
+                
                 try:
-                    API_URL = f"https://api-inference.huggingface.co/models/{model}"
+                    API_URL = f"https://api-inference.huggingface.co/models/{model_name}"
                     headers = {"Authorization": f"Bearer {api_token}"}
                     
-                    # Model-spezifische Parameter für optimale Fashion-Ergebnisse
-                    if "turbo" in model.lower():
-                        # Turbo-Modelle: Sehr wenige Steps für Geschwindigkeit
+                    # Model-spezifische Parameter
+                    if model_key == "sdxl_turbo":
+                        # Turbo-spezielle Settings
                         payload = {
                             "inputs": prompt,
                             "parameters": {
                                 "negative_prompt": "blurry, bad quality, distorted, amateur, cartoon, anime, low resolution, deformed, ugly, bad anatomy",
-                                "num_inference_steps": 2 if "sdxl-turbo" in model else 4,  
-                                "guidance_scale": 0.0 if "sdxl-turbo" in model else 1.0,   
+                                "num_inference_steps": model_info["steps"],
+                                "guidance_scale": model_info["guidance"],
                                 "width": 512,
                                 "height": 768
                             }
                         }
-                        model_name = "SDXL-Turbo ⚡" if "sdxl" in model else "SD-Turbo ⚡"
-                        
-                    elif "realvis" in model.lower() or "realistic_vision" in model.lower():
-                        # RealVIS: Optimiert für Fotorealismus
-                        payload = {
-                            "inputs": prompt,
-                            "parameters": {
-                                "negative_prompt": "blurry, bad quality, distorted, amateur, cartoon, anime, low resolution, deformed, ugly, bad anatomy, worst quality, low quality, normal quality, lowres, normal quality, ((monochrome)), ((grayscale)), skin spots, acnes, skin blemishes, age spot, glans, extra fingers, fewer fingers, ((watermark)), (white letters)",
-                                "num_inference_steps": 25,  # Mehr Steps für Realismus
-                                "guidance_scale": 7.0,      # Optimiert für RealVIS
-                                "width": 512,
-                                "height": 768,
-                                "scheduler": "DPMSolverMultistepScheduler"  # Besserer Scheduler für Realismus
-                            }
-                        }
-                        model_name = "RealVIS 📸" if "realvis" in model.lower() else "Realistic Vision 📷"
-                        
                     else:
-                        # Standard-Modelle: Normale Parameter
+                        # Standard Settings mit erweiterten Negative Prompts für bessere Qualität
+                        negative_prompt = "blurry, bad quality, distorted, amateur, cartoon, anime, low resolution, deformed, ugly, bad anatomy, worst quality, low quality, normal quality, lowres, skin spots, acnes, skin blemishes, extra fingers, fewer fingers, watermark"
+                        
                         payload = {
                             "inputs": prompt,
                             "parameters": {
-                                "negative_prompt": "blurry, bad quality, distorted, amateur, cartoon, anime, low resolution, deformed, ugly, bad anatomy",
-                                "num_inference_steps": 20 if "xl" in model else 25,
-                                "guidance_scale": 7.5,
+                                "negative_prompt": negative_prompt,
+                                "num_inference_steps": model_info["steps"],
+                                "guidance_scale": model_info["guidance"],
                                 "width": 512,
                                 "height": 768
                             }
                         }
-                        model_name = model.split('/')[-1].replace('-', ' ').replace('_', ' ').title()
                     
-                    st.info(f"🎨 Versuche {model_name} (Model {model_idx + 1}/{len(models)})...")
+                    # Status-Update für User
+                    if model_idx == 0:
+                        st.info(f"🎨 Generiere mit {display_name}...")
+                    else:
+                        st.info(f"🔄 Fallback: {display_name}...")
                     
-                    # Request mit Timeout
-                    timeout = 30 if "turbo" in model.lower() else 60  # Turbo ist schneller
-                    response = requests.post(API_URL, headers=headers, json=payload, timeout=timeout)
+                    # Request mit model-spezifischem Timeout
+                    response = requests.post(API_URL, headers=headers, json=payload, timeout=model_info["timeout"])
                     
                     if response.status_code == 200:
                         content_type = response.headers.get('content-type', '')
                         if 'image' in content_type:
-                            st.success(f"✅ {model_name} erfolgreich!")
+                            st.success(f"✅ {display_name} erfolgreich!")
                             return Image.open(io.BytesIO(response.content))
                         else:
-                            # Manchmal JSON Response mit Error
+                            # JSON Response prüfen
                             try:
                                 error_data = response.json()
                                 if 'error' in error_data:
-                                    st.warning(f"⚠️ {model_name}: {error_data['error'][:50]}...")
+                                    st.warning(f"⚠️ {display_name}: {error_data['error'][:50]}...")
                                 continue
                             except:
                                 continue
                                 
                     elif response.status_code == 503:
-                        st.warning(f"⏳ {model_name} lädt... (ca. 20s)")
-                        
-                        # Bei Turbo-Modellen: Kurz warten und nochmal versuchen
-                        if "turbo" in model.lower() and model_idx == 0:
-                            st.info("⚡ Turbo-Model startet - 15 Sekunden warten...")
-                            time.sleep(15)
+                        if model_idx == 0:  # Nur beim ersten Model warten
+                            st.warning(f"⏳ {display_name} lädt... 20s warten")
+                            time.sleep(20)
                             
-                            # Zweiter Versuch für Turbo
-                            response2 = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+                            # Zweiter Versuch
+                            response2 = requests.post(API_URL, headers=headers, json=payload, timeout=model_info["timeout"])
                             if response2.status_code == 200:
                                 content_type = response2.headers.get('content-type', '')
                                 if 'image' in content_type:
-                                    st.success(f"✅ {model_name} erfolgreich (2. Versuch)!")
+                                    st.success(f"✅ {display_name} erfolgreich (2. Versuch)!")
                                     return Image.open(io.BytesIO(response2.content))
-                        
+                        else:
+                            st.warning(f"⏳ {display_name} nicht verfügbar")
                         continue
                         
                     elif response.status_code == 400:
-                        st.warning(f"⚠️ {model_name}: Parameter-Fehler")
+                        st.warning(f"⚠️ {display_name}: Parameter-Fehler")
                         continue
                     elif response.status_code == 429:
-                        st.warning(f"⚠️ {model_name}: Rate Limit - versuche nächstes Model")
+                        st.warning(f"⚠️ {display_name}: Rate Limit")
                         continue
                     else:
-                        st.warning(f"⚠️ {model_name}: HTTP {response.status_code}")
+                        st.warning(f"⚠️ {display_name}: HTTP {response.status_code}")
                         continue
                         
                 except requests.Timeout:
-                    st.warning(f"⏰ {model_name}: Timeout - versuche nächstes Model")
+                    st.warning(f"⏰ {display_name}: Timeout ({model_info['timeout']}s)")
                     continue
                 except Exception as e:
-                    st.warning(f"❌ {model_name}: {str(e)[:50]}...")
+                    st.warning(f"❌ {display_name}: {str(e)[:50]}...")
                     continue
             
             # Alle Modelle fehlgeschlagen
-            st.error("❌ Alle Hugging Face Modelle nicht verfügbar")
+            st.error("❌ Alle AI-Modelle nicht verfügbar - verwende Fallback")
             return None
             
         except Exception as e:
             st.error(f"Hugging Face API Fehler: {e}")
             return None
+    
+    def get_available_models_info(self) -> Dict[str, Dict[str, Any]]:
+        """Gibt verfügbare Modelle mit Info zurück"""
+        return {
+            "realvis_xl": {
+                "display_name": "🏆 RealVIS XL",
+                "quality": "★★★★★",
+                "speed": "★☆☆☆☆",
+                "description": "Maximum Fotorealismus",
+                "time": "~60-90s",
+                "best_for": "Profi-Fashion-Fotos"
+            },
+            "sdxl_base": {
+                "display_name": "💎 SDXL Base",
+                "quality": "★★★★☆",
+                "speed": "★★☆☆☆",
+                "description": "Sehr gute Qualität",
+                "time": "~45-75s",
+                "best_for": "Hochwertige Designs"
+            },
+            "realistic_vision": {
+                "display_name": "📸 Realistic Vision",
+                "quality": "★★★☆☆",
+                "speed": "★★★☆☆",
+                "description": "Ausgewogen",
+                "time": "~30-60s",
+                "best_for": "Gute Balance"
+            },
+            "sd_v15": {
+                "display_name": "🔄 SD 1.5",
+                "quality": "★★☆☆☆",
+                "speed": "★★★★☆",
+                "description": "Zuverlässig",
+                "time": "~20-45s",
+                "best_for": "Schnelle Ergebnisse"
+            },
+            "sdxl_turbo": {
+                "display_name": "⚡ SDXL-Turbo",
+                "quality": "★★★☆☆",
+                "speed": "★★★★★",
+                "description": "Ultra-schnell",
+                "time": "~5-30s",
+                "best_for": "Sofortige Previews"
+            }
+        }
     
     def create_fallback_design(self, selected_items: List[Dict], style_prompt: str) -> Image.Image:
         """Erstellt Fallback-Design"""
@@ -733,8 +825,8 @@ def numpy_to_base64(image_array, size=(512, 768)):
     return f"data:image/png;base64,{img_str}"
 
 def generate_fashion_design(selected_items: List[Dict], style_prompt: str, 
-                          generator: FashionGenerator) -> Optional[np.ndarray]:
-    """Generiert Fashion-Design"""
+                          generator: FashionGenerator, preferred_model: str = "auto") -> Optional[np.ndarray]:
+    """Generiert Fashion-Design mit Model-Auswahl"""
     try:
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -749,13 +841,13 @@ def generate_fashion_design(selected_items: List[Dict], style_prompt: str,
         available_apis = generator.check_api_availability()
         generated_image = None
         
-        # Versuche Hugging Face API
+        # Versuche Hugging Face API mit gewähltem Model
         if available_apis['huggingface']:
             status_text.text("🤗 Generiere mit Hugging Face API...")
             progress_bar.progress(0.4)
-            generated_image = generator.generate_with_huggingface_api(prompt)
+            generated_image = generator.generate_with_huggingface_api(prompt, preferred_model)
             if generated_image:
-                status_text.text("✅ Hugging Face erfolgreich!")
+                status_text.text("✅ AI-Generierung erfolgreich!")
         
         if generated_image is None:
             # Fallback
@@ -957,13 +1049,50 @@ def render_generate_tab():
         """, unsafe_allow_html=True)
         
         # Style-Konfiguration
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             style_mood = st.selectbox("🎭 Style", ["Modern", "Klassisch", "Vintage", "Sportlich", "Minimalistisch", "Extravagant"])
         
         with col2:
             color_scheme = st.selectbox("🎨 Farben", ["Natürlich", "Monochrom", "Pastell", "Kräftig"])
+        
+        with col3:
+            # AI Model Auswahl
+            generator = st.session_state.generator
+            models_info = generator.get_available_models_info()
+            
+            model_options = ["🚀 Auto (Beste verfügbar)"]
+            model_keys = ["auto"]
+            
+            for key, info in models_info.items():
+                display_text = f"{info['display_name']} ({info['time']})"
+                model_options.append(display_text)
+                model_keys.append(key)
+            
+            selected_model_idx = st.selectbox(
+                "🤖 AI Model", 
+                range(len(model_options)),
+                format_func=lambda x: model_options[x],
+                help="Wähle Qualität vs. Geschwindigkeit"
+            )
+            
+            selected_model = model_keys[selected_model_idx]
+        
+        # Model Info anzeigen
+        if selected_model != "auto" and selected_model in models_info:
+            model_info = models_info[selected_model]
+            st.markdown(f"""
+            <div style="background: #f8f9fa; padding: 10px; border-radius: 8px; margin: 10px 0;">
+                <strong>{model_info['display_name']}</strong><br>
+                <small>
+                    Qualität: {model_info['quality']} | 
+                    Speed: {model_info['speed']} | 
+                    Zeit: {model_info['time']}<br>
+                    💡 {model_info['description']} - {model_info['best_for']}
+                </small>
+            </div>
+            """, unsafe_allow_html=True)
         
         style_prompt = f"{style_mood.lower()} style, {color_scheme.lower()} colors"
         
@@ -974,7 +1103,8 @@ def render_generate_tab():
                 generated_image = generate_fashion_design(
                     st.session_state.selected_for_generation,
                     style_prompt,
-                    st.session_state.generator
+                    st.session_state.generator,
+                    selected_model
                 )
                 
                 if generated_image is not None:
