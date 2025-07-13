@@ -303,7 +303,7 @@ class FashionGenerator:
                     continue
             
             # Alle Modelle fehlgeschlagen
-            st.error("❌ Alle AI-Modelle nicht verfügbar - verwende Fallback")
+            st.error("❌ Alle Modelle nicht verfügbar - verwende Fallback")
             return None
             
         except Exception as e:
@@ -847,7 +847,7 @@ def generate_fashion_design(selected_items: List[Dict], style_prompt: str,
             progress_bar.progress(0.4)
             generated_image = generator.generate_with_huggingface_api(prompt, preferred_model)
             if generated_image:
-                status_text.text("✅ AI-Generierung erfolgreich!")
+                status_text.text("✅ Bild Generierung erfolgreich!")
         
         if generated_image is None:
             # Fallback
@@ -999,7 +999,7 @@ def render_generate_tab():
         st.markdown("""
         <div class="generation-alert">
             <h3>💡 Hugging Face Setup</h3>
-            <p>Für AI-generierte Fashion-Fotos, füge deinen Token in den Streamlit Secrets hinzu:</p>
+            <p>Für generierte Fashion-Fotos, füge deinen Token in den Streamlit Secrets hinzu:</p>
             <pre>HUGGINGFACE_TOKEN = "hf_dein_token_hier"</pre>
         </div>
         """, unsafe_allow_html=True)
@@ -1058,7 +1058,7 @@ def render_generate_tab():
             color_scheme = st.selectbox("🎨 Farben", ["Natürlich", "Monochrom", "Pastell", "Kräftig"])
         
         with col3:
-            # AI Model Auswahl
+            # Model Auswahl
             generator = st.session_state.generator
             models_info = generator.get_available_models_info()
             
@@ -1071,7 +1071,7 @@ def render_generate_tab():
                 model_keys.append(key)
             
             selected_model_idx = st.selectbox(
-                "🤖 AI Model", 
+                "🤖 Model", 
                 range(len(model_options)),
                 format_func=lambda x: model_options[x],
                 help="Wähle Qualität vs. Geschwindigkeit"
@@ -1109,7 +1109,7 @@ def render_generate_tab():
                 
                 if generated_image is not None:
                     # Speichere Generierung
-                    api_used = "Hugging Face AI" if available_apis['huggingface'] else "Enhanced Local"
+                    api_used = "Hugging Face" if available_apis['huggingface'] else "Enhanced Local"
                     generation_data = {
                         'image': numpy_to_base64(generated_image, size=(512, 768)),
                         'style': style_mood,
@@ -1218,11 +1218,11 @@ def main():
     # Header
     st.markdown("""
     <div class="main-header">🏃‍♀️ Fashion Swipe Studio</div>
-    <div class="sub-header">Funktioniert mit Hugging Face AI!</div>
+    <div class="sub-header">Fashion Swipe Generator!</div>
     """, unsafe_allow_html=True)
     
     # Navigation
-    tab1, tab2, tab3 = st.tabs(["🔄 Fashion Swipe", "🎨 AI Generator", "🖼️ Galerie"])
+    tab1, tab2, tab3 = st.tabs(["🔄 Fashion Swipe", "🎨  Generator", "🖼️ Galerie"])
     
     with tab1:
         render_swipe_tab()
@@ -1284,7 +1284,7 @@ def main():
         st.markdown("""
         <div style="background: #f0f8ff; padding: 15px; border-radius: 10px; font-size: 0.8rem;">
             <strong>🚀 Fashion Swipe Studio:</strong><br>
-            • Hugging Face AI Integration<br>
+            • Hugging Face Integration<br>
             • Stable Diffusion XL<br>
             • Professionelle Fashion-Fotos<br>
             • Kostenlose Premium-Qualität<br>
