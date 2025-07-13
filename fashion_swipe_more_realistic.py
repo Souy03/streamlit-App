@@ -8,7 +8,6 @@ from PIL import Image, ImageDraw, ImageFilter, ImageOps, ImageEnhance
 import io
 import base64
 import json
-import torch
 from collections import Counter
 import gc
 import os
@@ -18,19 +17,13 @@ import tempfile
 
 # Konfiguration der Streamlit-Seite
 st.set_page_config(
-    page_title="Realistic Fashion Generator",
+    page_title="Fashion Swipe Studio",
     page_icon="👗",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# Memory-optimierte Konfiguration
-torch.set_grad_enabled(False)
-if torch.cuda.is_available():
-    torch.cuda.empty_cache()
-    torch.backends.cudnn.benchmark = False
-
-# Custom CSS (erweitert für professionelle Darstellung)
+# Custom CSS
 st.markdown("""
 <style>
     .main-header {
@@ -59,10 +52,6 @@ st.markdown("""
         border: 1px solid rgba(255,255,255,0.2);
         margin: 20px 0;
         transition: all 0.4s ease-out;
-        position: relative;
-        cursor: grab;
-        user-select: none;
-        touch-action: none;
     }
     
     .fashion-card:hover {
@@ -79,36 +68,6 @@ st.markdown("""
         overflow: hidden;
     }
     
-    .runway-preview::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="%23333" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
-        opacity: 0.3;
-    }
-    
-    .generated-image {
-        border-radius: 15px;
-        box-shadow: 0 15px 50px rgba(0,0,0,0.3);
-        transition: transform 0.3s ease;
-    }
-    
-    .generated-image:hover {
-        transform: scale(1.02);
-    }
-    
-    .generation-controls {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 30px;
-        border-radius: 20px;
-        margin: 30px 0;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-    }
-    
     .professional-badge {
         background: linear-gradient(45deg, #FFD700, #FFA500);
         color: #333;
@@ -118,6 +77,15 @@ st.markdown("""
         font-weight: bold;
         margin: 5px;
         display: inline-block;
+    }
+    
+    .generation-alert {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 15px;
+        margin: 20px 0;
+        border-left: 5px solid #FFD700;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -136,617 +104,744 @@ FASHION_CLASSES = {
     9: "Stiefeletten"
 }
 
-# Professionelle Fashion-Generator Klasse
-class RealisticFashionGenerator:
-    """Generiert realistische Fashion-Fotografien"""
+class CloudOptimizedFashionGenerator:
+    """Optimiert für Streamlit Cloud - keine schweren AI-Modelle"""
     
     def __init__(self):
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.current_model = None
+        self.available_apis = self.check_api_availability()
         
-    def generate_with_sdxl_turbo(self, prompt: str, negative_prompt: str = "") -> Optional[Image.Image]:
-        """Nutze SDXL-Turbo für realistische Fashion-Fotografien"""
-        try:
-            from diffusers import AutoPipelineForText2Image
-            import torch
-            
-            # Lade Modell nur wenn nötig
-            if self.current_model != 'sdxl-turbo':
-                self.cleanup_memory()
-                
-                pipe = AutoPipelineForText2Image.from_pretrained(
-                    "stabilityai/sdxl-turbo",
-                    torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-                    variant="fp16" if torch.cuda.is_available() else None,
-                    use_safetensors=True
-                )
-                pipe = pipe.to(self.device)
-                
-                # Memory-Optimierungen
-                if torch.cuda.is_available():
-                    pipe.enable_model_cpu_offload()
-                pipe.enable_attention_slicing()
-                
-                self.pipe = pipe
-                self.current_model = 'sdxl-turbo'
-            
-            # Generiere hochqualitatives Bild
-            image = self.pipe(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                num_inference_steps=2,  # Turbo braucht nur 1-4 Steps
-                guidance_scale=0.0,
-                height=768,  # Höhere Auflösung für bessere Qualität
-                width=512
-            ).images[0]
-            
-            # Verbessere Bildqualität
-            image = self.enhance_image_quality(image)
-            
-            return image
-            
-        except ImportError as e:
-            st.error(f"Diffusers Import-Fehler: {e}")
-            st.info("Installiere: pip install --upgrade diffusers transformers accelerate")
-            return None
-        except Exception as e:
-            st.error(f"SDXL-Turbo Fehler: {e}")
-            return None
+    def check_api_availability(self) -> Dict[str, bool]:
+        """Prüft verfügbare APIs"""
+        apis = {
+            'huggingface': bool(os.getenv('HUGGINGFACE_TOKEN')),
+            'replicate': bool(os.getenv('REPLICATE_API_TOKEN')),
+            'stability': bool(os.getenv('STABILITY_API_KEY'))
+        }
+        return apis
     
-    def generate_with_huggingface_api(self, prompt: str) -> Optional[Image.Image]:
-        """Nutze Hugging Face Inference API für realistische Bilder"""
-        try:
-            # Verwende ein auf Fashion spezialisiertes Modell
-            API_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5"
-            headers = {"Authorization": f"Bearer {os.getenv('HUGGINGFACE_TOKEN', '')}"}
+    def generate_with_stability_api(self, prompt: str) -> Optional[Image.Image]:
+        """Nutzt Stability AI API (am zuverlässigsten für Cloud)"""
+        api_key = os.getenv('STABILITY_API_KEY')
+        if not api_key:
+            return None
             
-            payload = {
-                "inputs": prompt,
-                "parameters": {
-                    "num_inference_steps": 30,
-                    "guidance_scale": 7.5,
-                    "width": 512,
-                    "height": 768
-                }
+        try:
+            import requests
+            
+            url = "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image"
+            
+            headers = {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
             }
             
-            response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+            body = {
+                "text_prompts": [
+                    {
+                        "text": prompt,
+                        "weight": 1
+                    },
+                    {
+                        "text": "blurry, bad quality, distorted, amateur, low resolution",
+                        "weight": -1
+                    }
+                ],
+                "cfg_scale": 7,
+                "height": 768,
+                "width": 512,
+                "samples": 1,
+                "steps": 30,
+                "style_preset": "photographic"
+            }
+            
+            response = requests.post(url, headers=headers, json=body, timeout=60)
             
             if response.status_code == 200:
-                image = Image.open(io.BytesIO(response.content))
-                return self.enhance_image_quality(image)
+                data = response.json()
+                if data.get("artifacts"):
+                    image_data = data["artifacts"][0]["base64"]
+                    image = Image.open(io.BytesIO(base64.b64decode(image_data)))
+                    return image
             else:
+                st.error(f"Stability API Error: {response.status_code}")
                 return None
                 
         except Exception as e:
-            st.warning(f"API nicht verfügbar: {e}")
+            st.error(f"Stability API Fehler: {e}")
             return None
     
-    def enhance_image_quality(self, image: Image.Image) -> Image.Image:
-        """Verbessert die Bildqualität mit klassischen Methoden"""
+    def generate_with_replicate_api(self, prompt: str) -> Optional[Image.Image]:
+        """Nutzt Replicate API als Alternative"""
+        api_token = os.getenv('REPLICATE_API_TOKEN')
+        if not api_token:
+            return None
+            
         try:
-            # Erhöhe Schärfe
-            enhancer = ImageEnhance.Sharpness(image)
-            image = enhancer.enhance(1.2)
+            headers = {
+                "Authorization": f"Token {api_token}",
+                "Content-Type": "application/json"
+            }
             
-            # Verbessere Kontrast
-            enhancer = ImageEnhance.Contrast(image)
-            image = enhancer.enhance(1.1)
+            # Verwende SDXL über Replicate
+            data = {
+                "version": "7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
+                "input": {
+                    "prompt": prompt,
+                    "negative_prompt": "blurry, bad quality, distorted, amateur",
+                    "width": 512,
+                    "height": 768,
+                    "num_outputs": 1,
+                    "guidance_scale": 7.5,
+                    "num_inference_steps": 25
+                }
+            }
             
-            # Erhöhe Sättigung leicht
-            enhancer = ImageEnhance.Color(image)
-            image = enhancer.enhance(1.05)
+            response = requests.post(
+                "https://api.replicate.com/v1/predictions",
+                headers=headers,
+                json=data,
+                timeout=10
+            )
             
-            # Skaliere auf finale Größe
-            image = image.resize((768, 1024), Image.LANCZOS)
+            if response.status_code == 201:
+                prediction_url = response.json()["urls"]["get"]
+                
+                # Warte auf Ergebnis (mit Timeout)
+                for _ in range(30):  # Max 30 Sekunden warten
+                    result_response = requests.get(prediction_url, headers=headers, timeout=5)
+                    result = result_response.json()
+                    
+                    if result["status"] == "succeeded" and result.get("output"):
+                        image_url = result["output"][0]
+                        img_response = requests.get(image_url, timeout=10)
+                        if img_response.status_code == 200:
+                            return Image.open(io.BytesIO(img_response.content))
+                    elif result["status"] == "failed":
+                        break
+                    
+                    time.sleep(1)
             
-            return image
-        except Exception:
-            return image.resize((768, 1024), Image.LANCZOS)
+            return None
+            
+        except Exception as e:
+            st.error(f"Replicate API Fehler: {e}")
+            return None
     
-    def create_professional_fashion_image(self, selected_items: List[Dict], style_prompt: str) -> Image.Image:
-        """Erstellt professionelle Fashion-Fotografien als Fallback"""
+    def generate_with_huggingface_inference(self, prompt: str) -> Optional[Image.Image]:
+        """Verbesserte Hugging Face API Nutzung"""
+        api_token = os.getenv('HUGGINGFACE_TOKEN')
+        if not api_token:
+            return None
+        
+        try:
+            # Verwende verschiedene Modelle
+            models = [
+                "stabilityai/stable-diffusion-xl-base-1.0",
+                "runwayml/stable-diffusion-v1-5",
+                "CompVis/stable-diffusion-v1-4"
+            ]
+            
+            for model in models:
+                try:
+                    API_URL = f"https://api-inference.huggingface.co/models/{model}"
+                    headers = {"Authorization": f"Bearer {api_token}"}
+                    
+                    payload = {
+                        "inputs": prompt,
+                        "parameters": {
+                            "negative_prompt": "blurry, bad quality, distorted",
+                            "num_inference_steps": 20,
+                            "guidance_scale": 7.5,
+                            "width": 512,
+                            "height": 768
+                        }
+                    }
+                    
+                    response = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+                    
+                    if response.status_code == 200 and response.headers.get('content-type', '').startswith('image/'):
+                        return Image.open(io.BytesIO(response.content))
+                    elif response.status_code == 503:
+                        # Model loading - try next model
+                        continue
+                        
+                except Exception:
+                    continue
+            
+            return None
+            
+        except Exception as e:
+            st.warning(f"Hugging Face API nicht verfügbar: {e}")
+            return None
+    
+    def create_professional_fashion_design(self, selected_items: List[Dict], style_prompt: str) -> Image.Image:
+        """Erstellt hochwertiges Fashion-Design ohne AI-Abhängigkeit"""
         
         # Hochauflösender Canvas
-        img = Image.new('RGB', (768, 1024), color=(240, 240, 245))
+        img = Image.new('RGB', (512, 768), color=(245, 245, 250))
         
-        # Erstelle professionellen Runway-Hintergrund
-        img = self.create_runway_background(img)
+        # Professioneller Hintergrund
+        img = self.create_studio_background(img)
         
-        # Lade oder erstelle realistisches Model-Base
-        model_img = self.create_realistic_model_base(img.size)
+        # Realistisches Model
+        model_img = self.create_detailed_model(img.size)
         
-        # Füge Kleidung basierend auf Auswahl hinzu
-        model_img = self.apply_realistic_clothing(model_img, selected_items, style_prompt)
+        # Styling basierend auf Auswahl
+        model_img = self.apply_fashion_styling(model_img, selected_items, style_prompt)
         
-        # Füge professionelle Beleuchtung hinzu
-        model_img = self.add_professional_lighting(model_img)
+        # Professionelle Effekte
+        model_img = self.add_professional_effects(model_img)
         
-        # Composite auf Runway
+        # Composite
         final_img = Image.alpha_composite(img.convert('RGBA'), model_img.convert('RGBA'))
         
         return final_img.convert('RGB')
     
-    def create_runway_background(self, base_img: Image.Image) -> Image.Image:
-        """Erstellt einen professionellen Runway-Hintergrund"""
+    def create_studio_background(self, base_img: Image.Image) -> Image.Image:
+        """Erstellt professionellen Studio-Hintergrund"""
         draw = ImageDraw.Draw(base_img)
         width, height = base_img.size
         
-        # Gradient Hintergrund (dunkel für Runway)
+        # Studio-Gradient
         for y in range(height):
-            # Dunkler Gradient von oben nach unten
-            shade = int(20 + (y / height) * 40)  # Von sehr dunkel zu dunkel
+            shade = int(240 + (y / height) * 15)
             draw.rectangle([0, y, width, y+1], fill=(shade, shade, shade+5))
         
-        # Runway-Laufsteg
-        runway_width = width // 3
-        runway_x = (width - runway_width) // 2
+        # Studio-Beleuchtung simulieren
+        # Hauptlicht
+        overlay = Image.new('RGBA', base_img.size, (0, 0, 0, 0))
+        light_draw = ImageDraw.Draw(overlay)
         
-        # Laufsteg mit Perspektive
-        for y in range(height//2, height):
-            perspective = (y - height//2) / (height//2)
-            current_width = int(runway_width * (0.3 + 0.7 * perspective))
-            x_start = runway_x + (runway_width - current_width) // 2
-            
-            # Laufsteg-Farbe (hellgrau)
-            gray = int(180 - perspective * 50)
-            draw.rectangle([x_start, y, x_start + current_width, y+1], 
-                          fill=(gray, gray, gray+10))
+        center_x, center_y = width // 2, height // 4
+        for radius in range(200, 0, -10):
+            alpha = int(15 * (200 - radius) / 200)
+            light_draw.ellipse([
+                center_x - radius, center_y - radius//2,
+                center_x + radius, center_y + radius//2
+            ], fill=(255, 255, 255, alpha))
         
-        # Spotlight-Effekte
-        self.add_spotlight_effects(base_img)
-        
+        base_img.paste(overlay, (0, 0), overlay)
         return base_img
     
-    def add_spotlight_effects(self, img: Image.Image):
-        """Fügt Spotlight-Beleuchtungseffekte hinzu"""
-        # Erstelle Spotlight-Overlay
+    def create_detailed_model(self, size: Tuple[int, int]) -> Image.Image:
+        """Erstellt detailliertes Model"""
+        width, height = size
+        img = Image.new('RGBA', size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        
+        center_x = width // 2
+        
+        # Proportionen
+        head_y = height // 8
+        neck_y = head_y + 50
+        shoulder_y = neck_y + 30
+        chest_y = shoulder_y + 80
+        waist_y = chest_y + 100
+        hip_y = waist_y + 80
+        knee_y = hip_y + 150
+        ankle_y = height - 60
+        
+        # Hautfarbe
+        skin_color = (245, 220, 177)
+        
+        # Kopf (detaillierter)
+        head_width, head_height = 50, 65
+        draw.ellipse([
+            center_x - head_width//2, head_y - head_height//2,
+            center_x + head_width//2, head_y + head_height//2
+        ], fill=skin_color, outline=(200, 180, 140), width=2)
+        
+        # Gesichtszüge
+        eye_y = head_y - 8
+        draw.ellipse([center_x - 18, eye_y - 3, center_x - 12, eye_y + 3], fill=(70, 50, 30))
+        draw.ellipse([center_x + 12, eye_y - 3, center_x + 18, eye_y + 3], fill=(70, 50, 30))
+        draw.ellipse([center_x - 3, head_y + 5, center_x + 3, head_y + 12], fill=(220, 180, 140))
+        draw.arc([center_x - 8, head_y + 18, center_x + 8, head_y + 25], 0, 180, fill=(200, 120, 120), width=2)
+        
+        # Haare
+        hair_color = (101, 67, 33)
+        hair_points = [
+            (center_x - head_width//2 - 8, head_y - head_height//2 - 15),
+            (center_x + head_width//2 + 8, head_y - head_height//2 - 15),
+            (center_x + head_width//2 + 5, head_y + head_height//2 - 10),
+            (center_x - head_width//2 - 5, head_y + head_height//2 - 10)
+        ]
+        draw.polygon(hair_points, fill=hair_color)
+        
+        # Hals
+        draw.rectangle([center_x - 12, neck_y, center_x + 12, shoulder_y], fill=skin_color)
+        
+        # Körper (realistischer)
+        shoulder_width = 65
+        chest_width = 60
+        waist_width = 45
+        hip_width = 65
+        
+        # Torso
+        torso_points = [
+            (center_x - shoulder_width//2, shoulder_y),
+            (center_x + shoulder_width//2, shoulder_y),
+            (center_x + chest_width//2, chest_y),
+            (center_x + waist_width//2, waist_y),
+            (center_x + hip_width//2, hip_y),
+            (center_x - hip_width//2, hip_y),
+            (center_x - waist_width//2, waist_y),
+            (center_x - chest_width//2, chest_y)
+        ]
+        draw.polygon(torso_points, fill=skin_color, outline=(200, 180, 140), width=1)
+        
+        # Arme
+        arm_width = 20
+        # Linker Arm
+        left_arm_points = [
+            (center_x - shoulder_width//2, shoulder_y),
+            (center_x - shoulder_width//2 - 35, shoulder_y + 80),
+            (center_x - shoulder_width//2 - 30, waist_y),
+            (center_x - shoulder_width//2 - 10, waist_y),
+            (center_x - shoulder_width//2 - 15, shoulder_y + 80),
+            (center_x - shoulder_width//2 - arm_width, shoulder_y)
+        ]
+        draw.polygon(left_arm_points, fill=skin_color, outline=(200, 180, 140), width=1)
+        
+        # Rechter Arm
+        right_arm_points = [
+            (center_x + shoulder_width//2, shoulder_y),
+            (center_x + shoulder_width//2 + 35, shoulder_y + 80),
+            (center_x + shoulder_width//2 + 30, waist_y),
+            (center_x + shoulder_width//2 + 10, waist_y),
+            (center_x + shoulder_width//2 + 15, shoulder_y + 80),
+            (center_x + shoulder_width//2 + arm_width, shoulder_y)
+        ]
+        draw.polygon(right_arm_points, fill=skin_color, outline=(200, 180, 140), width=1)
+        
+        # Beine
+        leg_width = 30
+        # Linkes Bein
+        left_leg_points = [
+            (center_x - hip_width//2, hip_y),
+            (center_x - leg_width//2, hip_y),
+            (center_x - leg_width//2, knee_y),
+            (center_x - leg_width//2 - 5, ankle_y),
+            (center_x - leg_width//2 - 20, ankle_y),
+            (center_x - leg_width//2 - 15, knee_y),
+            (center_x - hip_width//2, knee_y)
+        ]
+        draw.polygon(left_leg_points, fill=skin_color, outline=(200, 180, 140), width=1)
+        
+        # Rechtes Bein
+        right_leg_points = [
+            (center_x + hip_width//2, hip_y),
+            (center_x + leg_width//2, hip_y),
+            (center_x + leg_width//2, knee_y),
+            (center_x + leg_width//2 + 5, ankle_y),
+            (center_x + leg_width//2 + 20, ankle_y),
+            (center_x + leg_width//2 + 15, knee_y),
+            (center_x + hip_width//2, knee_y)
+        ]
+        draw.polygon(right_leg_points, fill=skin_color, outline=(200, 180, 140), width=1)
+        
+        return img
+    
+    def apply_fashion_styling(self, model_img: Image.Image, selected_items: List[Dict], style_prompt: str) -> Image.Image:
+        """Wendet Fashion-Styling an"""
+        draw = ImageDraw.Draw(model_img)
+        width, height = model_img.size
+        center_x = width // 2
+        
+        # Style-basierte Farben
+        colors = self.get_style_colors(style_prompt)
+        
+        categories = [item['category'] for item in selected_items]
+        
+        for i, category in enumerate(set(categories)):
+            color = colors[i % len(colors)]
+            
+            if category in ["T-Shirt/Top", "Hemd", "Pullover"]:
+                self.draw_detailed_top(draw, center_x, color)
+            elif category == "Kleid":
+                self.draw_detailed_dress(draw, center_x, color)
+            elif category == "Hose":
+                self.draw_detailed_pants(draw, center_x, color)
+            elif category == "Mantel":
+                self.draw_detailed_coat(draw, center_x, color)
+            elif category in ["Sneaker", "Sandalen", "Stiefeletten"]:
+                self.draw_detailed_shoes(draw, center_x, color, category)
+        
+        return model_img
+    
+    def draw_detailed_top(self, draw: ImageDraw.Draw, center_x: int, color: Tuple[int, int, int]):
+        """Zeichnet detailliertes Oberteil"""
+        shoulder_y = 110
+        waist_y = 270
+        
+        # Hauptteil mit Schatten
+        shadow_color = tuple(max(0, c - 30) for c in color)
+        
+        # Schatten
+        shadow_points = [
+            (center_x - 32 + 3, shoulder_y + 3),
+            (center_x + 32 + 3, shoulder_y + 3),
+            (center_x + 27 + 3, waist_y + 3),
+            (center_x - 27 + 3, waist_y + 3)
+        ]
+        draw.polygon(shadow_points, fill=shadow_color)
+        
+        # Hauptteil
+        main_points = [
+            (center_x - 32, shoulder_y),
+            (center_x + 32, shoulder_y),
+            (center_x + 27, waist_y),
+            (center_x - 27, waist_y)
+        ]
+        draw.polygon(main_points, fill=color, outline=self.darken_color(color), width=2)
+        
+        # Ärmel mit Details
+        # Linker Ärmel
+        left_sleeve = [
+            (center_x - 32, shoulder_y),
+            (center_x - 50, shoulder_y + 25),
+            (center_x - 45, shoulder_y + 60),
+            (center_x - 32, shoulder_y + 45)
+        ]
+        draw.polygon(left_sleeve, fill=color, outline=self.darken_color(color), width=1)
+        
+        # Rechter Ärmel
+        right_sleeve = [
+            (center_x + 32, shoulder_y),
+            (center_x + 50, shoulder_y + 25),
+            (center_x + 45, shoulder_y + 60),
+            (center_x + 32, shoulder_y + 45)
+        ]
+        draw.polygon(right_sleeve, fill=color, outline=self.darken_color(color), width=1)
+        
+        # Details (Nähte)
+        draw.line([(center_x - 30, shoulder_y + 10), (center_x - 25, waist_y - 10)], 
+                 fill=self.darken_color(color), width=1)
+        draw.line([(center_x + 30, shoulder_y + 10), (center_x + 25, waist_y - 10)], 
+                 fill=self.darken_color(color), width=1)
+    
+    def draw_detailed_dress(self, draw: ImageDraw.Draw, center_x: int, color: Tuple[int, int, int]):
+        """Zeichnet detailliertes Kleid"""
+        shoulder_y = 110
+        waist_y = 270
+        hem_y = 500
+        
+        # Schatten
+        shadow_color = tuple(max(0, c - 30) for c in color)
+        shadow_points = [
+            (center_x - 32 + 3, shoulder_y + 3),
+            (center_x + 32 + 3, shoulder_y + 3),
+            (center_x + 27 + 3, waist_y + 3),
+            (center_x + 45 + 3, hem_y + 3),
+            (center_x - 45 + 3, hem_y + 3),
+            (center_x - 27 + 3, waist_y + 3)
+        ]
+        draw.polygon(shadow_points, fill=shadow_color)
+        
+        # Hauptkleid
+        dress_points = [
+            (center_x - 32, shoulder_y),
+            (center_x + 32, shoulder_y),
+            (center_x + 27, waist_y),
+            (center_x + 45, hem_y),
+            (center_x - 45, hem_y),
+            (center_x - 27, waist_y)
+        ]
+        draw.polygon(dress_points, fill=color, outline=self.darken_color(color), width=2)
+        
+        # Ärmel
+        self.draw_dress_sleeves(draw, center_x, shoulder_y, color)
+        
+        # Details
+        # Taillierung
+        draw.arc([center_x - 30, waist_y - 10, center_x + 30, waist_y + 10], 0, 180, 
+                fill=self.darken_color(color), width=2)
+    
+    def draw_dress_sleeves(self, draw: ImageDraw.Draw, center_x: int, shoulder_y: int, color: Tuple[int, int, int]):
+        """Zeichnet Kleid-Ärmel"""
+        draw.polygon([
+            (center_x - 32, shoulder_y),
+            (center_x - 45, shoulder_y + 15),
+            (center_x - 40, shoulder_y + 35),
+            (center_x - 32, shoulder_y + 25)
+        ], fill=color, outline=self.darken_color(color), width=1)
+        
+        draw.polygon([
+            (center_x + 32, shoulder_y),
+            (center_x + 45, shoulder_y + 15),
+            (center_x + 40, shoulder_y + 35),
+            (center_x + 32, shoulder_y + 25)
+        ], fill=color, outline=self.darken_color(color), width=1)
+    
+    def draw_detailed_pants(self, draw: ImageDraw.Draw, center_x: int, color: Tuple[int, int, int]):
+        """Zeichnet detaillierte Hose"""
+        waist_y = 270
+        crotch_y = 360
+        knee_y = 480
+        ankle_y = 600
+        
+        # Schatten
+        shadow_color = tuple(max(0, c - 30) for c in color)
+        
+        # Linkes Bein mit Schatten
+        left_shadow = [
+            (center_x - 27 + 2, waist_y + 2),
+            (center_x - 2 + 2, waist_y + 2),
+            (center_x - 2 + 2, crotch_y + 2),
+            (center_x - 12 + 2, knee_y + 2),
+            (center_x - 17 + 2, ankle_y + 2),
+            (center_x - 32 + 2, ankle_y + 2),
+            (center_x - 27 + 2, knee_y + 2),
+            (center_x - 27 + 2, crotch_y + 2)
+        ]
+        draw.polygon(left_shadow, fill=shadow_color)
+        
+        # Rechtes Bein mit Schatten
+        right_shadow = [
+            (center_x + 2 + 2, waist_y + 2),
+            (center_x + 27 + 2, waist_y + 2),
+            (center_x + 27 + 2, crotch_y + 2),
+            (center_x + 27 + 2, knee_y + 2),
+            (center_x + 32 + 2, ankle_y + 2),
+            (center_x + 17 + 2, ankle_y + 2),
+            (center_x + 12 + 2, knee_y + 2),
+            (center_x + 2 + 2, crotch_y + 2)
+        ]
+        draw.polygon(right_shadow, fill=shadow_color)
+        
+        # Haupthose
+        # Linkes Bein
+        left_leg = [
+            (center_x - 27, waist_y),
+            (center_x - 2, waist_y),
+            (center_x - 2, crotch_y),
+            (center_x - 12, knee_y),
+            (center_x - 17, ankle_y),
+            (center_x - 32, ankle_y),
+            (center_x - 27, knee_y),
+            (center_x - 27, crotch_y)
+        ]
+        draw.polygon(left_leg, fill=color, outline=self.darken_color(color), width=2)
+        
+        # Rechtes Bein
+        right_leg = [
+            (center_x + 2, waist_y),
+            (center_x + 27, waist_y),
+            (center_x + 27, crotch_y),
+            (center_x + 27, knee_y),
+            (center_x + 32, ankle_y),
+            (center_x + 17, ankle_y),
+            (center_x + 12, knee_y),
+            (center_x + 2, crotch_y)
+        ]
+        draw.polygon(right_leg, fill=color, outline=self.darken_color(color), width=2)
+        
+        # Details
+        # Mittelnaht
+        draw.line([(center_x, waist_y), (center_x, crotch_y)], 
+                 fill=self.darken_color(color), width=2)
+    
+    def draw_detailed_coat(self, draw: ImageDraw.Draw, center_x: int, color: Tuple[int, int, int]):
+        """Zeichnet detaillierten Mantel"""
+        shoulder_y = 100
+        waist_y = 270
+        hem_y = 480
+        
+        # Schatten
+        shadow_color = tuple(max(0, c - 30) for c in color)
+        shadow_points = [
+            (center_x - 40 + 3, shoulder_y + 3),
+            (center_x + 40 + 3, shoulder_y + 3),
+            (center_x + 35 + 3, waist_y + 3),
+            (center_x + 55 + 3, hem_y + 3),
+            (center_x - 55 + 3, hem_y + 3),
+            (center_x - 35 + 3, waist_y + 3)
+        ]
+        draw.polygon(shadow_points, fill=shadow_color)
+        
+        # Hauptmantel
+        coat_points = [
+            (center_x - 40, shoulder_y),
+            (center_x + 40, shoulder_y),
+            (center_x + 35, waist_y),
+            (center_x + 55, hem_y),
+            (center_x - 55, hem_y),
+            (center_x - 35, waist_y)
+        ]
+        draw.polygon(coat_points, fill=color, outline=self.darken_color(color), width=3)
+        
+        # Mantel-Ärmel
+        # Linker Ärmel
+        left_sleeve = [
+            (center_x - 40, shoulder_y),
+            (center_x - 65, shoulder_y + 30),
+            (center_x - 60, shoulder_y + 100),
+            (center_x - 40, shoulder_y + 80)
+        ]
+        draw.polygon(left_sleeve, fill=color, outline=self.darken_color(color), width=2)
+        
+        # Rechter Ärmel
+        right_sleeve = [
+            (center_x + 40, shoulder_y),
+            (center_x + 65, shoulder_y + 30),
+            (center_x + 60, shoulder_y + 100),
+            (center_x + 40, shoulder_y + 80)
+        ]
+        draw.polygon(right_sleeve, fill=color, outline=self.darken_color(color), width=2)
+        
+        # Knöpfe
+        for i in range(4):
+            button_y = shoulder_y + 50 + i * 35
+            draw.ellipse([center_x - 4, button_y, center_x + 4, button_y + 8], 
+                        fill=self.darken_color(color))
+        
+        # Kragen
+        collar_points = [
+            (center_x - 15, shoulder_y - 5),
+            (center_x + 15, shoulder_y - 5),
+            (center_x + 20, shoulder_y + 15),
+            (center_x - 20, shoulder_y + 15)
+        ]
+        draw.polygon(collar_points, fill=self.darken_color(color))
+    
+    def draw_detailed_shoes(self, draw: ImageDraw.Draw, center_x: int, color: Tuple[int, int, int], shoe_type: str):
+        """Zeichnet detaillierte Schuhe"""
+        ankle_y = 600
+        
+        if shoe_type == "Stiefeletten":
+            # Stiefeletten mit Details
+            boot_height = 60
+            
+            # Schatten
+            shadow_color = tuple(max(0, c - 40) for c in color)
+            draw.polygon([
+                (center_x - 30 + 2, ankle_y - boot_height + 2),
+                (center_x - 12 + 2, ankle_y - boot_height + 2),
+                (center_x - 8 + 2, ankle_y + 2),
+                (center_x - 35 + 2, ankle_y + 2),
+                (center_x - 38 + 2, ankle_y - 15 + 2)
+            ], fill=shadow_color)
+            
+            draw.polygon([
+                (center_x + 12 + 2, ankle_y - boot_height + 2),
+                (center_x + 30 + 2, ankle_y - boot_height + 2),
+                (center_x + 38 + 2, ankle_y - 15 + 2),
+                (center_x + 35 + 2, ankle_y + 2),
+                (center_x + 8 + 2, ankle_y + 2)
+            ], fill=shadow_color)
+            
+            # Linker Stiefel
+            draw.polygon([
+                (center_x - 30, ankle_y - boot_height),
+                (center_x - 12, ankle_y - boot_height),
+                (center_x - 8, ankle_y),
+                (center_x - 35, ankle_y),
+                (center_x - 38, ankle_y - 15)
+            ], fill=color, outline=self.darken_color(color), width=2)
+            
+            # Rechter Stiefel
+            draw.polygon([
+                (center_x + 12, ankle_y - boot_height),
+                (center_x + 30, ankle_y - boot_height),
+                (center_x + 38, ankle_y - 15),
+                (center_x + 35, ankle_y),
+                (center_x + 8, ankle_y)
+            ], fill=color, outline=self.darken_color(color), width=2)
+            
+            # Details (Schnürung)
+            for i in range(3):
+                detail_y = ankle_y - boot_height + 15 + i * 15
+                draw.line([(center_x - 25, detail_y), (center_x - 15, detail_y)], 
+                         fill=self.darken_color(color), width=1)
+                draw.line([(center_x + 15, detail_y), (center_x + 25, detail_y)], 
+                         fill=self.darken_color(color), width=1)
+        
+        else:
+            # Normale Schuhe mit Details
+            # Schatten
+            shadow_color = tuple(max(0, c - 40) for c in color)
+            draw.ellipse([center_x - 30 + 2, ankle_y - 12 + 2, center_x - 2 + 2, ankle_y + 12 + 2], 
+                        fill=shadow_color)
+            draw.ellipse([center_x + 2 + 2, ankle_y - 12 + 2, center_x + 30 + 2, ankle_y + 12 + 2], 
+                        fill=shadow_color)
+            
+            # Linker Schuh
+            draw.ellipse([center_x - 30, ankle_y - 12, center_x - 2, ankle_y + 12], 
+                        fill=color, outline=self.darken_color(color), width=2)
+            # Rechter Schuh
+            draw.ellipse([center_x + 2, ankle_y - 12, center_x + 30, ankle_y + 12], 
+                        fill=color, outline=self.darken_color(color), width=2)
+            
+            # Schuhdetails
+            draw.arc([center_x - 28, ankle_y - 8, center_x - 4, ankle_y + 8], 0, 180, 
+                    fill=self.darken_color(color), width=1)
+            draw.arc([center_x + 4, ankle_y - 8, center_x + 28, ankle_y + 8], 0, 180, 
+                    fill=self.darken_color(color), width=1)
+    
+    def add_professional_effects(self, img: Image.Image) -> Image.Image:
+        """Fügt professionelle Effekte hinzu"""
+        # Weiche Schatten
+        shadow_img = img.filter(ImageFilter.GaussianBlur(radius=1))
+        
+        # Beleuchtungs-Overlay
         overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
         draw = ImageDraw.Draw(overlay)
         
         width, height = img.size
         center_x, center_y = width // 2, height // 3
         
-        # Hauptspotlight
-        for radius in range(300, 0, -5):
-            alpha = int(30 * (300 - radius) / 300)
-            draw.ellipse([center_x - radius, center_y - radius//2, 
-                         center_x + radius, center_y + radius//2], 
-                        fill=(255, 255, 255, alpha))
-        
-        # Mische Overlay
-        img.paste(overlay, (0, 0), overlay)
-    
-    def create_realistic_model_base(self, size: Tuple[int, int]) -> Image.Image:
-        """Erstellt eine realistische Model-Basis-Silhouette"""
-        width, height = size
-        img = Image.new('RGBA', size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
-        
-        # Model-Proportionen (realistischer)
-        center_x = width // 2
-        head_y = height // 6
-        shoulder_y = head_y + 80
-        waist_y = shoulder_y + 180
-        hip_y = waist_y + 120
-        knee_y = hip_y + 200
-        ankle_y = height - 80
-        
-        # Hautfarbe
-        skin_color = (245, 222, 179, 255)  # Natürliche Hautfarbe
-        
-        # Kopf (oval, realistischer)
-        head_width, head_height = 60, 80
-        draw.ellipse([center_x - head_width//2, head_y - head_height//2,
-                     center_x + head_width//2, head_y + head_height//2], 
-                    fill=skin_color)
-        
-        # Hals
-        draw.rectangle([center_x - 15, head_y + head_height//2,
-                       center_x + 15, shoulder_y - 20], fill=skin_color)
-        
-        # Körper (realistischere Silhouette)
-        # Torso
-        shoulder_width = 80
-        waist_width = 55
-        hip_width = 75
-        
-        # Torso-Polygon für natürliche Form
-        torso_points = [
-            (center_x - shoulder_width//2, shoulder_y),
-            (center_x + shoulder_width//2, shoulder_y),
-            (center_x + waist_width//2, waist_y),
-            (center_x + hip_width//2, hip_y),
-            (center_x - hip_width//2, hip_y),
-            (center_x - waist_width//2, waist_y)
-        ]
-        draw.polygon(torso_points, fill=skin_color)
-        
-        # Arme (realistischer)
-        arm_width = 25
-        # Linker Arm
-        draw.polygon([
-            (center_x - shoulder_width//2, shoulder_y),
-            (center_x - shoulder_width//2 - 40, shoulder_y + 100),
-            (center_x - shoulder_width//2 - 35, shoulder_y + 200),
-            (center_x - shoulder_width//2 - 30, waist_y + 50),
-            (center_x - shoulder_width//2 - arm_width, waist_y + 50),
-            (center_x - shoulder_width//2 - arm_width - 5, shoulder_y + 200),
-            (center_x - shoulder_width//2 - arm_width - 10, shoulder_y + 100),
-            (center_x - shoulder_width//2 - arm_width, shoulder_y)
-        ], fill=skin_color)
-        
-        # Rechter Arm
-        draw.polygon([
-            (center_x + shoulder_width//2, shoulder_y),
-            (center_x + shoulder_width//2 + 40, shoulder_y + 100),
-            (center_x + shoulder_width//2 + 35, shoulder_y + 200),
-            (center_x + shoulder_width//2 + 30, waist_y + 50),
-            (center_x + shoulder_width//2 + arm_width, waist_y + 50),
-            (center_x + shoulder_width//2 + arm_width + 5, shoulder_y + 200),
-            (center_x + shoulder_width//2 + arm_width + 10, shoulder_y + 100),
-            (center_x + shoulder_width//2 + arm_width, shoulder_y)
-        ], fill=skin_color)
-        
-        # Beine (realistischer)
-        leg_width = 35
-        # Linkes Bein
-        draw.polygon([
-            (center_x - hip_width//2, hip_y),
-            (center_x - leg_width//2, hip_y),
-            (center_x - leg_width//2, knee_y),
-            (center_x - leg_width//2 - 5, ankle_y),
-            (center_x - leg_width//2 - 25, ankle_y),
-            (center_x - leg_width//2 - 20, knee_y),
-            (center_x - hip_width//2, knee_y)
-        ], fill=skin_color)
-        
-        # Rechtes Bein
-        draw.polygon([
-            (center_x + hip_width//2, hip_y),
-            (center_x + leg_width//2, hip_y),
-            (center_x + leg_width//2, knee_y),
-            (center_x + leg_width//2 + 5, ankle_y),
-            (center_x + leg_width//2 + 25, ankle_y),
-            (center_x + leg_width//2 + 20, knee_y),
-            (center_x + hip_width//2, knee_y)
-        ], fill=skin_color)
-        
-        # Füge Gesichtszüge hinzu
-        self.add_facial_features(img, center_x, head_y)
-        
-        # Füge Haare hinzu
-        self.add_realistic_hair(img, center_x, head_y, head_width, head_height)
-        
-        return img
-    
-    def add_facial_features(self, img: Image.Image, center_x: int, head_y: int):
-        """Fügt realistische Gesichtszüge hinzu"""
-        draw = ImageDraw.Draw(img)
-        
-        # Augen
-        eye_y = head_y - 10
-        draw.ellipse([center_x - 25, eye_y - 5, center_x - 15, eye_y + 5], fill=(70, 50, 30))
-        draw.ellipse([center_x + 15, eye_y - 5, center_x + 25, eye_y + 5], fill=(70, 50, 30))
-        
-        # Augenbrauen
-        draw.arc([center_x - 28, eye_y - 15, center_x - 12, eye_y - 5], 0, 180, fill=(101, 67, 33), width=2)
-        draw.arc([center_x + 12, eye_y - 15, center_x + 28, eye_y - 5], 0, 180, fill=(101, 67, 33), width=2)
-        
-        # Nase
-        draw.polygon([(center_x - 3, head_y), (center_x + 3, head_y), (center_x, head_y + 15)], 
-                    fill=(235, 200, 160))
-        
-        # Mund
-        draw.ellipse([center_x - 8, head_y + 20, center_x + 8, head_y + 28], fill=(200, 120, 120))
-    
-    def add_realistic_hair(self, img: Image.Image, center_x: int, head_y: int, head_width: int, head_height: int):
-        """Fügt realistische Haare hinzu"""
-        draw = ImageDraw.Draw(img)
-        hair_color = (101, 67, 33, 255)  # Braun
-        
-        # Haupthaar (oben und seitlich)
-        hair_points = [
-            (center_x - head_width//2 - 10, head_y - head_height//2 - 20),
-            (center_x + head_width//2 + 10, head_y - head_height//2 - 20),
-            (center_x + head_width//2 + 15, head_y - head_height//2 + 30),
-            (center_x + head_width//2, head_y + head_height//2),
-            (center_x - head_width//2, head_y + head_height//2),
-            (center_x - head_width//2 - 15, head_y - head_height//2 + 30)
-        ]
-        draw.polygon(hair_points, fill=hair_color)
-    
-    def apply_realistic_clothing(self, model_img: Image.Image, selected_items: List[Dict], style_prompt: str) -> Image.Image:
-        """Wendet realistische Kleidung auf das Model an"""
-        draw = ImageDraw.Draw(model_img)
-        width, height = model_img.size
-        center_x = width // 2
-        
-        # Bestimme Kleidungsfarben basierend auf Style
-        clothing_colors = self.get_clothing_colors_from_style(style_prompt)
-        
-        categories = [item['category'] for item in selected_items]
-        
-        for i, category in enumerate(set(categories)):
-            color = clothing_colors[i % len(clothing_colors)]
-            
-            if category in ["T-Shirt/Top", "Hemd", "Pullover"]:
-                self.draw_realistic_top(draw, center_x, color)
-            elif category == "Kleid":
-                self.draw_realistic_dress(draw, center_x, color)
-            elif category == "Hose":
-                self.draw_realistic_pants(draw, center_x, color)
-            elif category == "Mantel":
-                self.draw_realistic_coat(draw, center_x, color)
-            elif category in ["Sneaker", "Sandalen", "Stiefeletten"]:
-                self.draw_realistic_shoes(draw, center_x, color, category)
-        
-        # Füge Schatten und Details hinzu
-        model_img = self.add_clothing_details(model_img)
-        
-        return model_img
-    
-    def draw_realistic_top(self, draw: ImageDraw.Draw, center_x: int, color: Tuple[int, int, int]):
-        """Zeichnet ein realistisches Oberteil"""
-        # Oberteil mit realistischen Proportionen
-        shoulder_y = 150
-        waist_y = 330
-        
-        # Hauptteil
-        top_points = [
-            (center_x - 40, shoulder_y),
-            (center_x + 40, shoulder_y),
-            (center_x + 35, waist_y),
-            (center_x - 35, waist_y)
-        ]
-        draw.polygon(top_points, fill=color, outline=self.darken_color(color), width=2)
-        
-        # Ärmel
-        draw.polygon([
-            (center_x - 40, shoulder_y),
-            (center_x - 65, shoulder_y + 30),
-            (center_x - 60, shoulder_y + 80),
-            (center_x - 40, shoulder_y + 60)
-        ], fill=color, outline=self.darken_color(color), width=1)
-        
-        draw.polygon([
-            (center_x + 40, shoulder_y),
-            (center_x + 65, shoulder_y + 30),
-            (center_x + 60, shoulder_y + 80),
-            (center_x + 40, shoulder_y + 60)
-        ], fill=color, outline=self.darken_color(color), width=1)
-    
-    def draw_realistic_dress(self, draw: ImageDraw.Draw, center_x: int, color: Tuple[int, int, int]):
-        """Zeichnet ein realistisches Kleid"""
-        shoulder_y = 150
-        waist_y = 330
-        hem_y = 650
-        
-        # Kleid-Silhouette
-        dress_points = [
-            (center_x - 40, shoulder_y),
-            (center_x + 40, shoulder_y),
-            (center_x + 35, waist_y),
-            (center_x + 60, hem_y),
-            (center_x - 60, hem_y),
-            (center_x - 35, waist_y)
-        ]
-        draw.polygon(dress_points, fill=color, outline=self.darken_color(color), width=2)
-        
-        # Ärmel
-        self.draw_dress_sleeves(draw, center_x, shoulder_y, color)
-    
-    def draw_dress_sleeves(self, draw: ImageDraw.Draw, center_x: int, shoulder_y: int, color: Tuple[int, int, int]):
-        """Zeichnet Kleid-Ärmel"""
-        # Kurze Ärmel
-        draw.polygon([
-            (center_x - 40, shoulder_y),
-            (center_x - 55, shoulder_y + 20),
-            (center_x - 50, shoulder_y + 40),
-            (center_x - 40, shoulder_y + 30)
-        ], fill=color, outline=self.darken_color(color), width=1)
-        
-        draw.polygon([
-            (center_x + 40, shoulder_y),
-            (center_x + 55, shoulder_y + 20),
-            (center_x + 50, shoulder_y + 40),
-            (center_x + 40, shoulder_y + 30)
-        ], fill=color, outline=self.darken_color(color), width=1)
-    
-    def draw_realistic_pants(self, draw: ImageDraw.Draw, center_x: int, color: Tuple[int, int, int]):
-        """Zeichnet realistische Hosen"""
-        waist_y = 330
-        crotch_y = 450
-        knee_y = 600
-        ankle_y = 750
-        
-        # Linkes Bein
-        draw.polygon([
-            (center_x - 35, waist_y),
-            (center_x - 5, waist_y),
-            (center_x - 5, crotch_y),
-            (center_x - 15, knee_y),
-            (center_x - 20, ankle_y),
-            (center_x - 40, ankle_y),
-            (center_x - 35, knee_y),
-            (center_x - 35, crotch_y)
-        ], fill=color, outline=self.darken_color(color), width=2)
-        
-        # Rechtes Bein
-        draw.polygon([
-            (center_x + 5, waist_y),
-            (center_x + 35, waist_y),
-            (center_x + 35, crotch_y),
-            (center_x + 35, knee_y),
-            (center_x + 40, ankle_y),
-            (center_x + 20, ankle_y),
-            (center_x + 15, knee_y),
-            (center_x + 5, crotch_y)
-        ], fill=color, outline=self.darken_color(color), width=2)
-    
-    def draw_realistic_coat(self, draw: ImageDraw.Draw, center_x: int, color: Tuple[int, int, int]):
-        """Zeichnet einen realistischen Mantel"""
-        shoulder_y = 140
-        waist_y = 330
-        hem_y = 600
-        
-        # Mantel-Silhouette (weiter und länger)
-        coat_points = [
-            (center_x - 50, shoulder_y),
-            (center_x + 50, shoulder_y),
-            (center_x + 45, waist_y),
-            (center_x + 70, hem_y),
-            (center_x - 70, hem_y),
-            (center_x - 45, waist_y)
-        ]
-        draw.polygon(coat_points, fill=color, outline=self.darken_color(color), width=3)
-        
-        # Mantel-Ärmel (länger)
-        draw.polygon([
-            (center_x - 50, shoulder_y),
-            (center_x - 80, shoulder_y + 40),
-            (center_x - 75, shoulder_y + 120),
-            (center_x - 50, shoulder_y + 100)
-        ], fill=color, outline=self.darken_color(color), width=2)
-        
-        draw.polygon([
-            (center_x + 50, shoulder_y),
-            (center_x + 80, shoulder_y + 40),
-            (center_x + 75, shoulder_y + 120),
-            (center_x + 50, shoulder_y + 100)
-        ], fill=color, outline=self.darken_color(color), width=2)
-        
-        # Knöpfe
-        for i in range(5):
-            button_y = shoulder_y + 60 + i * 40
-            draw.ellipse([center_x - 5, button_y, center_x + 5, button_y + 10], 
-                        fill=self.darken_color(color))
-    
-    def draw_realistic_shoes(self, draw: ImageDraw.Draw, center_x: int, color: Tuple[int, int, int], shoe_type: str):
-        """Zeichnet realistische Schuhe"""
-        ankle_y = 750
-        
-        if shoe_type == "Stiefeletten":
-            # Stiefeletten (höher)
-            boot_height = 80
-            draw.polygon([
-                (center_x - 35, ankle_y - boot_height),
-                (center_x - 15, ankle_y - boot_height),
-                (center_x - 10, ankle_y),
-                (center_x - 45, ankle_y),
-                (center_x - 50, ankle_y - 20)
-            ], fill=color, outline=self.darken_color(color), width=2)
-            
-            draw.polygon([
-                (center_x + 15, ankle_y - boot_height),
-                (center_x + 35, ankle_y - boot_height),
-                (center_x + 50, ankle_y - 20),
-                (center_x + 45, ankle_y),
-                (center_x + 10, ankle_y)
-            ], fill=color, outline=self.darken_color(color), width=2)
-        else:
-            # Normale Schuhe
-            draw.ellipse([center_x - 35, ankle_y - 15, center_x - 5, ankle_y + 15], 
-                        fill=color, outline=self.darken_color(color), width=2)
-            draw.ellipse([center_x + 5, ankle_y - 15, center_x + 35, ankle_y + 15], 
-                        fill=color, outline=self.darken_color(color), width=2)
-    
-    def add_clothing_details(self, img: Image.Image) -> Image.Image:
-        """Fügt Details und Schatten zu Kleidung hinzu"""
-        # Weiche Schatten
-        shadow_img = img.filter(ImageFilter.GaussianBlur(radius=2))
-        
-        # Erstelle Schatten-Overlay
-        overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
-        shadow_draw = ImageDraw.Draw(overlay)
-        
-        # Subtle Schatten unter Kleidung
-        width, height = img.size
-        center_x = width // 2
-        
-        # Schatten unter Oberteil
-        shadow_draw.ellipse([center_x - 60, 320, center_x + 60, 350], 
-                           fill=(0, 0, 0, 30))
+        # Hauptlicht
+        for radius in range(150, 0, -8):
+            alpha = int(12 * (150 - radius) / 150)
+            draw.ellipse([
+                center_x - 80 - radius//2, center_y - 80 - radius//2,
+                center_x - 80 + radius//2, center_y - 80 + radius//2
+            ], fill=(255, 255, 255, alpha))
         
         # Composite
         img = Image.alpha_composite(img.convert('RGBA'), overlay)
         
-        return img
-    
-    def add_professional_lighting(self, img: Image.Image) -> Image.Image:
-        """Fügt professionelle Beleuchtung hinzu"""
-        # Erstelle Beleuchtungs-Overlay
-        lighting = Image.new('RGBA', img.size, (0, 0, 0, 0))
-        draw = ImageDraw.Draw(lighting)
-        
-        width, height = img.size
-        center_x, center_y = width // 2, height // 3
-        
-        # Hauptlicht (von oben links)
-        for radius in range(200, 0, -5):
-            alpha = int(20 * (200 - radius) / 200)
-            draw.ellipse([center_x - 100 - radius//2, center_y - 100 - radius//2,
-                         center_x - 100 + radius//2, center_y - 100 + radius//2], 
-                        fill=(255, 255, 255, alpha))
-        
-        # Fülllicht (von rechts)
-        for radius in range(150, 0, -8):
-            alpha = int(15 * (150 - radius) / 150)
-            draw.ellipse([center_x + 80 - radius//2, center_y - radius//2,
-                         center_x + 80 + radius//2, center_y + radius//2], 
-                        fill=(255, 240, 200, alpha))
-        
-        # Composite Beleuchtung
-        img = Image.alpha_composite(img.convert('RGBA'), lighting)
+        # Schärfe verbessern
+        enhancer = ImageEnhance.Sharpness(img)
+        img = enhancer.enhance(1.1)
         
         return img
     
-    def get_clothing_colors_from_style(self, style_prompt: str) -> List[Tuple[int, int, int]]:
-        """Realistische Farben basierend auf Fashion-Trends"""
+    def get_style_colors(self, style_prompt: str) -> List[Tuple[int, int, int]]:
+        """Gibt Farben basierend auf Style zurück"""
         style_lower = style_prompt.lower()
         
         if "modern" in style_lower or "minimalistisch" in style_lower:
-            return [(45, 45, 48), (240, 240, 245), (128, 128, 130)]  # Schwarz, Weiß, Grau
+            return [(45, 45, 48), (240, 240, 245), (128, 128, 130)]
         elif "klassisch" in style_lower:
-            return [(25, 25, 112), (255, 255, 255), (139, 69, 19)]  # Navy, Weiß, Braun
+            return [(25, 25, 112), (255, 255, 255), (139, 69, 19)]
         elif "vintage" in style_lower:
-            return [(139, 69, 19), (205, 133, 63), (128, 0, 0)]  # Braun, Peru, Maroon
+            return [(139, 69, 19), (205, 133, 63), (128, 0, 0)]
         elif "sportlich" in style_lower:
-            return [(0, 0, 0), (255, 69, 0), (255, 255, 255)]  # Schwarz, Rot, Weiß
+            return [(0, 0, 0), (255, 69, 0), (255, 255, 255)]
         elif "extravagant" in style_lower:
-            return [(148, 0, 211), (255, 20, 147), (255, 215, 0)]  # Violett, Pink, Gold
+            return [(148, 0, 211), (255, 20, 147), (255, 215, 0)]
         elif "natürlich" in style_lower:
-            return [(34, 139, 34), (139, 90, 43), (240, 230, 140)]  # Grün, Braun, Khaki
+            return [(34, 139, 34), (139, 90, 43), (240, 230, 140)]
         elif "monochrom" in style_lower:
-            return [(0, 0, 0), (128, 128, 128), (255, 255, 255)]  # Schwarz, Grau, Weiß
+            return [(0, 0, 0), (128, 128, 128), (255, 255, 255)]
         elif "pastell" in style_lower:
-            return [(255, 182, 193), (176, 224, 230), (221, 160, 221)]  # Rosa, Hellblau, Plum
+            return [(255, 182, 193), (176, 224, 230), (221, 160, 221)]
         else:
-            # Fashion-Default (elegante Erdtöne)
             return [(47, 79, 79), (205, 192, 176), (139, 69, 19)]
     
     def darken_color(self, color: Tuple[int, int, int], factor: float = 0.6) -> Tuple[int, int, int]:
-        """Dunkelt eine Farbe ab für Outlines"""
+        """Dunkelt eine Farbe ab"""
         return tuple(max(0, int(c * factor)) for c in color[:3])
-    
-    def cleanup_memory(self):
-        """Memory Cleanup"""
-        if hasattr(self, 'pipe'):
-            del self.pipe
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        self.current_model = None
 
 def create_professional_fashion_prompt(selected_items: List[Dict], style_prompt: str) -> str:
     """Erstellt professionelle Fashion-Photography Prompts"""
     categories = [item['category'] for item in selected_items]
     category_text = ", ".join(set(categories))
     
-    # Basis-Prompt für professionelle Fashion-Fotografie
     base_prompt = f"professional fashion photography, elegant female model wearing {category_text}"
     
-    # Style-spezifische Ergänzungen
     style_additions = {
         "modern": "contemporary minimalist design, clean lines, urban setting",
         "klassisch": "timeless elegant style, refined sophisticated look",
@@ -765,74 +860,78 @@ def create_professional_fashion_prompt(selected_items: List[Dict], style_prompt:
             style_addition = addition
             break
     
-    # Zusammenfügen
     full_prompt = f"{base_prompt}, {style_addition}, studio lighting, high fashion photography, professional model pose, detailed fabric textures, photorealistic, 8k quality, magazine cover quality"
     
     return full_prompt
 
-def create_professional_negative_prompt() -> str:
-    """Erstellt negative Prompts für bessere Qualität"""
-    return ("low quality, blurry, distorted, deformed, cartoon, anime, illustration, "
-           "amateur photography, bad lighting, overexposed, underexposed, "
-           "pixelated, artifacts, bad anatomy, weird proportions, "
-           "multiple people, crowd, text, watermark, signature")
-
-# Hauptgenerierungsfunktion (aktualisiert)
-def generate_fashion_design_realistic(selected_items: List[Dict], style_prompt: str, 
-                                   generator: RealisticFashionGenerator) -> Optional[np.ndarray]:
-    """Generiert realistische Fashion-Fotografien"""
+def generate_fashion_design_optimized(selected_items: List[Dict], style_prompt: str, 
+                                    generator: CloudOptimizedFashionGenerator) -> Optional[np.ndarray]:
+    """Optimierte Generierung für Streamlit Cloud"""
     try:
         progress_bar = st.progress(0)
         status_text = st.empty()
         
-        # Schritt 1: Professioneller Prompt
-        status_text.text("🎨 Erstelle professionellen Fashion-Prompt...")
-        progress_bar.progress(0.2)
+        status_text.text("🎨 Erstelle Fashion-Prompt...")
+        progress_bar.progress(0.1)
         
         prompt = create_professional_fashion_prompt(selected_items, style_prompt)
-        negative_prompt = create_professional_negative_prompt()
         
         st.write(f"**Generierungs-Prompt:** {prompt[:100]}...")
         
-        # Schritt 2: Versuche SDXL-Turbo
-        status_text.text("🖼️ Generiere mit SDXL-Turbo...")
-        progress_bar.progress(0.4)
+        # API Verfügbarkeit prüfen
+        available_apis = generator.check_api_availability()
         
-        generated_image = generator.generate_with_sdxl_turbo(prompt, negative_prompt)
+        generated_image = None
+        
+        # Versuche APIs in Reihenfolge der Zuverlässigkeit
+        if available_apis['stability']:
+            status_text.text("🎯 Generiere mit Stability AI (Premium)...")
+            progress_bar.progress(0.3)
+            generated_image = generator.generate_with_stability_api(prompt)
+        
+        if generated_image is None and available_apis['replicate']:
+            status_text.text("🔄 Versuche Replicate API...")
+            progress_bar.progress(0.5)
+            generated_image = generator.generate_with_replicate_api(prompt)
+        
+        if generated_image is None and available_apis['huggingface']:
+            status_text.text("🤗 Versuche Hugging Face API...")
+            progress_bar.progress(0.7)
+            generated_image = generator.generate_with_huggingface_inference(prompt)
         
         if generated_image is None:
-            # Schritt 3: Versuche Hugging Face API
-            status_text.text("🌐 Versuche Hugging Face API...")
-            progress_bar.progress(0.6)
-            generated_image = generator.generate_with_huggingface_api(prompt)
-        
-        if generated_image is None:
-            # Schritt 4: Professioneller Fallback
-            status_text.text("🎨 Erstelle professionelle Fashion-Illustration...")
-            progress_bar.progress(0.8)
-            generated_image = generator.create_professional_fashion_image(selected_items, style_prompt)
+            # Fallback zu hochwertiger lokaler Generierung
+            status_text.text("🎨 Erstelle hochwertiges Fashion-Design...")
+            progress_bar.progress(0.9)
+            generated_image = generator.create_professional_fashion_design(selected_items, style_prompt)
         
         progress_bar.progress(1.0)
-        status_text.text("✅ Professionelles Fashion-Design fertig!")
+        status_text.text("✅ Fashion-Design fertig!")
         
         return np.array(generated_image).astype(np.float32) / 255.0
         
     except Exception as e:
         st.error(f"Fehler bei der Generierung: {e}")
-        return None
-    finally:
-        generator.cleanup_memory()
+        # Fallback
+        status_text.text("🎨 Erstelle Fallback-Design...")
+        try:
+            fallback_image = generator.create_professional_fashion_design(selected_items, style_prompt)
+            return np.array(fallback_image).astype(np.float32) / 255.0
+        except Exception:
+            return None
 
-# Utility Functions (erweitert)
+# Utility Functions
 def image_to_base64(image_array):
+    """Konvertiert Bild zu Base64"""
     image = Image.fromarray(image_array.astype(np.uint8))
     image = image.resize((280, 280), Image.LANCZOS)
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG", optimize=True, quality=95)
+    image.save(buffer, format="PNG", optimize=True, quality=85)
     img_str = base64.b64encode(buffer.getvalue()).decode()
     return f"data:image/png;base64,{img_str}"
 
 def numpy_to_base64(image_array, size=(512, 768)):
+    """Konvertiert NumPy Array zu Base64"""
     if len(image_array.shape) == 2:
         image = Image.fromarray((image_array * 255).astype(np.uint8), mode='L')
     else:
@@ -842,13 +941,13 @@ def numpy_to_base64(image_array, size=(512, 768)):
         image = image.resize(size, Image.LANCZOS)
     
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG", optimize=True, quality=95)
+    image.save(buffer, format="PNG", optimize=True, quality=85)
     img_str = base64.b64encode(buffer.getvalue()).decode()
     return f"data:image/png;base64,{img_str}"
 
-# Session State und Load Functions (gleich wie vorher)
-@st.cache_data(max_entries=1)
-def load_fashion_mnist_optimized(sample_size=1000):
+@st.cache_data(max_entries=1, ttl=3600)
+def load_fashion_mnist_optimized(sample_size=500):
+    """Lädt Fashion-MNIST mit Caching"""
     try:
         (x_train, y_train), (x_test, y_test) = tf.keras.datasets.fashion_mnist.load_data()
         
@@ -864,24 +963,25 @@ def load_fashion_mnist_optimized(sample_size=1000):
         st.error(f"Fehler beim Laden von Fashion-MNIST: {e}")
         return None, None
 
-@st.cache_data(max_entries=1)
+@st.cache_data(max_entries=1, ttl=1800)
 def select_random_fashion_items():
-    x_all, y_all = load_fashion_mnist_optimized(sample_size=500)
+    """Wählt zufällige Fashion-Items mit Caching"""
+    x_all, y_all = load_fashion_mnist_optimized(sample_size=300)
     
     if x_all is None:
         return []
     
-    num_items = min(20, len(x_all))
+    num_items = min(15, len(x_all))  # Weniger Items für bessere Performance
     random_indices = random.sample(range(len(x_all)), num_items)
     
     items = []
+    brands = ["Chanel", "Dior", "Versace", "Prada", "Gucci", "Armani", "Zara", "H&M", "COS", "Uniqlo"]
+    prices = ["45€", "65€", "85€", "120€", "150€", "200€", "250€", "300€"]
+    
     for i, idx in enumerate(random_indices):
         image = x_all[idx]
         label = y_all[idx]
         category = FASHION_CLASSES[label]
-        
-        brands = ["Chanel", "Dior", "Versace", "Prada", "Gucci", "Armani", "Zara", "H&M"]
-        prices = ["45€", "65€", "85€", "120€", "150€", "200€"]
         
         item = {
             "id": i + 1,
@@ -902,8 +1002,9 @@ def select_random_fashion_items():
     
     return items
 
-# Session State initialization
+# Session State
 def init_session_state():
+    """Initialisiert Session State"""
     if 'current_index' not in st.session_state:
         st.session_state.current_index = 0
     if 'liked_items' not in st.session_state:
@@ -920,20 +1021,23 @@ def init_session_state():
     if 'generated_images' not in st.session_state:
         st.session_state.generated_images = []
     if 'generator' not in st.session_state:
-        st.session_state.generator = RealisticFashionGenerator()
+        st.session_state.generator = CloudOptimizedFashionGenerator()
     
-    # Limitiere gespeicherte Bilder
-    if len(st.session_state.generated_images) > 15:
-        st.session_state.generated_images = st.session_state.generated_images[-15:]
+    # Limitiere gespeicherte Daten für bessere Performance
+    if len(st.session_state.generated_images) > 10:
+        st.session_state.generated_images = st.session_state.generated_images[-10:]
+    if len(st.session_state.all_time_favorites) > 30:
+        st.session_state.all_time_favorites = st.session_state.all_time_favorites[-30:]
 
 # UI Functions
 def like_item():
+    """Liked ein Item"""
     items = st.session_state.fashion_items
     if st.session_state.current_index < len(items):
         current_item = items[st.session_state.current_index]
         st.session_state.liked_items.append(current_item)
         
-        if len(st.session_state.all_time_favorites) < 50:
+        if len(st.session_state.all_time_favorites) < 30:
             if not any(fav['original_index'] == current_item['original_index'] 
                       for fav in st.session_state.all_time_favorites):
                 st.session_state.all_time_favorites.append(current_item)
@@ -941,18 +1045,21 @@ def like_item():
         st.session_state.current_index += 1
 
 def dislike_item():
+    """Disliked ein Item"""
     items = st.session_state.fashion_items
     if st.session_state.current_index < len(items):
         st.session_state.current_index += 1
 
 def reset_session():
+    """Setzt Session zurück"""
     st.session_state.current_index = 0
     st.session_state.liked_items = []
     st.session_state.disliked_items = []
     gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    
     with st.spinner("Lade neue Fashion-Kollektion..."):
+        # Cache leeren
+        select_random_fashion_items.clear()
         st.session_state.fashion_items = select_random_fashion_items()
 
 # UI Rendering Functions
@@ -964,9 +1071,11 @@ def render_swipe_tab():
     
     if not items:
         st.error("Fehler beim Laden der Fashion-Daten.")
+        if st.button("🔄 Erneut versuchen"):
+            st.rerun()
         return
     
-    # Verbesserter Progress Bar
+    # Progress Bar
     progress = current_idx / total_items if total_items > 0 else 0
     st.markdown(f"""
     <div style="background: linear-gradient(90deg, #FF6B9D {progress * 100}%, #f0f0f0 {progress * 100}%); 
@@ -988,7 +1097,7 @@ def render_swipe_tab():
     else:
         current_item = items[current_idx]
         
-        # Hauptkarte mit verbessertem Design
+        # Hauptkarte
         col1, col2, col3 = st.columns([1, 4, 1])
         
         with col2:
@@ -1012,7 +1121,7 @@ def render_swipe_tab():
         
         st.markdown("---")
         
-        # Verbesserte Buttons
+        # Buttons
         col1, col2, col3 = st.columns([1, 1, 1])
         
         with col1:
@@ -1024,38 +1133,58 @@ def render_swipe_tab():
             if st.button("❤️ Love it!", type="primary", use_container_width=True, help="Zu Favoriten hinzufügen"):
                 like_item()
                 st.rerun()
-        
-        # Keyboard shortcuts info
-        st.markdown("""
-        <div style="text-align: center; margin-top: 20px; color: #999; font-size: 0.9rem;">
-            💡 Tipp: Nutze die Buttons um durch die Fashion-Kollektion zu navigieren
-        </div>
-        """, unsafe_allow_html=True)
 
 def render_generate_tab():
-    """Rendert den überarbeiteten Generate-Tab"""
-    st.markdown("## 🎨 Professioneller Fashion-Generator")
+    """Rendert den Generate-Tab"""
+    st.markdown("## 🎨 Fashion-Generator")
     
-    # Info-Box
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                color: white; padding: 20px; border-radius: 15px; margin: 20px 0;">
-        <h3 style="margin-top: 0;">✨ Erstelle realistische Fashion-Fotografien</h3>
-        <p style="margin-bottom: 0;">Wähle deine Lieblings-Styles und lass AI professionelle Fashion-Bilder generieren, 
-        ähnlich wie echte Model-Shootings auf dem Laufsteg.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    # Info über API-Verfügbarkeit
+    generator = st.session_state.generator
+    available_apis = generator.check_api_availability()
+    
+    if any(available_apis.values()):
+        api_info = []
+        if available_apis['stability']:
+            api_info.append("✅ Stability AI (Premium)")
+        if available_apis['replicate']:
+            api_info.append("✅ Replicate")
+        if available_apis['huggingface']:
+            api_info.append("✅ Hugging Face")
+        
+        st.markdown(f"""
+        <div class="generation-alert">
+            <h3>🚀 AI-APIs verfügbar</h3>
+            <p>Folgende Premium-APIs sind konfiguriert:<br>
+            {', '.join(api_info)}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="generation-alert">
+            <h3>💡 Lokaler Modus</h3>
+            <p>Keine externen APIs konfiguriert. Die App erstellt hochwertige Fashion-Designs 
+            mit optimierten lokalen Algorithmen.</p>
+            <details>
+                <summary>🔑 API-Konfiguration (optional)</summary>
+                <p>Für AI-generierte Bilder, füge folgende Secrets in Streamlit Cloud hinzu:</p>
+                <ul>
+                    <li><code>STABILITY_API_KEY</code> - Stability AI</li>
+                    <li><code>REPLICATE_API_TOKEN</code> - Replicate</li>
+                    <li><code>HUGGINGFACE_TOKEN</code> - Hugging Face</li>
+                </ul>
+            </details>
+        </div>
+        """, unsafe_allow_html=True)
     
     if not st.session_state.all_time_favorites:
         st.warning("💡 Sammle erst Favoriten durch Swipen in der Fashion-Kollektion!")
         return
     
-    # Verbesserte Favoriten-Auswahl
+    # Favoriten-Auswahl
     st.markdown("### 👗 Wähle Fashion-Styles (max. 3 für beste Ergebnisse)")
     
-    # Erstelle ein Grid für bessere Darstellung
-    cols_per_row = 6
-    items_to_show = st.session_state.all_time_favorites[:18]  # Zeige mehr Items
+    cols_per_row = 5
+    items_to_show = st.session_state.all_time_favorites[:15]
     
     for row in range(0, len(items_to_show), cols_per_row):
         cols = st.columns(cols_per_row)
@@ -1063,7 +1192,6 @@ def render_generate_tab():
             with cols[idx]:
                 is_selected = item in st.session_state.selected_for_generation
                 
-                # Verbesserter Button-Style
                 button_style = "✅" if is_selected else "⭕"
                 button_color = "primary" if is_selected else "secondary"
                 
@@ -1077,13 +1205,12 @@ def render_generate_tab():
                     if is_selected:
                         st.session_state.selected_for_generation.remove(item)
                     else:
-                        if len(st.session_state.selected_for_generation) < 5:
+                        if len(st.session_state.selected_for_generation) < 3:
                             st.session_state.selected_for_generation.append(item)
                         else:
-                            st.warning("⚠️ Maximal 5 Styles für optimale Ergebnisse!")
+                            st.warning("⚠️ Maximal 3 Styles für optimale Ergebnisse!")
                     st.rerun()
                 
-                # Verbesserte Bilddarstellung
                 st.markdown(f"""
                 <div style="text-align: center; margin-top: 5px;">
                     <img src="{item['image_data']}" 
@@ -1101,10 +1228,10 @@ def render_generate_tab():
         </div>
         """, unsafe_allow_html=True)
         
-        # Erweiterte Style-Optionen
+        # Style-Konfiguration
         st.markdown("### 🎨 Fashion-Style Konfiguration")
         
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         
         with col1:
             style_mood = st.selectbox(
@@ -1116,41 +1243,19 @@ def render_generate_tab():
         with col2:
             color_scheme = st.selectbox(
                 "🎨 Farbschema",
-                ["Natürlich", "Monochrom", "Pastell", "Kräftig", "Erdtöne", "Metallic"],
+                ["Natürlich", "Monochrom", "Pastell", "Kräftig", "Erdtöne"],
                 help="Farbpalette für die Kleidung"
             )
         
-        with col3:
-            photo_style = st.selectbox(
-                "📸 Foto-Stil",
-                ["Studio", "Runway", "Street Style", "Editorial", "Commercial"],
-                help="Art der Fashion-Fotografie"
-            )
+        style_prompt = f"{style_mood.lower()} style, {color_scheme.lower()} colors"
         
-        # Erweiterte Optionen
-        with st.expander("🔧 Erweiterte Einstellungen"):
-            col1, col2 = st.columns(2)
-            with col1:
-                lighting = st.selectbox(
-                    "💡 Beleuchtung",
-                    ["Professional Studio", "Natural Light", "Dramatic", "Soft"]
-                )
-            with col2:
-                quality_preset = st.selectbox(
-                    "⚡ Qualität",
-                    ["Standard (schnell)", "Hoch (langsamer)", "Ultra (sehr langsam)"]
-                )
-        
-        style_prompt = f"{style_mood.lower()} {photo_style.lower()} style, {color_scheme.lower()} colors, {lighting.lower()} lighting"
-        
-        # Verbesserter Generate-Button
+        # Generate-Button
         st.markdown("---")
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            if st.button("🎨 ✨ Generiere Fashion-Foto!", type="primary", use_container_width=True):
-                with st.spinner("Erstelle professionelle Fashion-Fotografie..."):
-                    # Generiere mit verbesserter Pipeline
-                    generated_image = generate_fashion_design_realistic(
+            if st.button("🎨 ✨ Generiere Fashion-Design!", type="primary", use_container_width=True):
+                with st.spinner("Erstelle professionelles Fashion-Design..."):
+                    generated_image = generate_fashion_design_optimized(
                         st.session_state.selected_for_generation,
                         style_prompt,
                         st.session_state.generator
@@ -1160,20 +1265,19 @@ def render_generate_tab():
                         # Speichere Generierung
                         generation_data = {
                             'image': numpy_to_base64(generated_image, size=(512, 768)),
-                            'style': f"{style_mood} {photo_style}",
+                            'style': f"{style_mood}",
                             'colors': color_scheme,
-                            'lighting': lighting,
                             'items': [item['category'] for item in st.session_state.selected_for_generation],
                             'timestamp': datetime.now().isoformat()
                         }
                         
                         st.session_state.generated_images.append(generation_data)
-                        if len(st.session_state.generated_images) > 15:
+                        if len(st.session_state.generated_images) > 10:
                             st.session_state.generated_images.pop(0)
                         
-                        # Professionelle Darstellung des Ergebnisses
+                        # Darstellung des Ergebnisses
                         st.markdown("---")
-                        st.markdown("## 📸 Generiertes Fashion-Foto")
+                        st.markdown("## 📸 Generiertes Fashion-Design")
                         
                         col1, col2 = st.columns([3, 2])
                         
@@ -1184,7 +1288,7 @@ def render_generate_tab():
                             """, unsafe_allow_html=True)
                             
                             st.image(generated_image, 
-                                   caption="Professionelles Fashion-Foto (AI-generiert)",
+                                   caption="Fashion-Design (AI-generiert)",
                                    use_column_width=True)
                             
                             st.markdown("</div></div>", unsafe_allow_html=True)
@@ -1193,10 +1297,9 @@ def render_generate_tab():
                             st.markdown(f"""
                             <div style="background: white; padding: 20px; border-radius: 15px; 
                                         box-shadow: 0 5px 15px rgba(0,0,0,0.1);">
-                                <h4>📋 Foto-Details</h4>
-                                <p><strong>Style:</strong> {style_mood} {photo_style}</p>
+                                <h4>📋 Design-Details</h4>
+                                <p><strong>Style:</strong> {style_mood}</p>
                                 <p><strong>Farben:</strong> {color_scheme}</p>
-                                <p><strong>Beleuchtung:</strong> {lighting}</p>
                                 <p><strong>Fashion-Items:</strong><br>
                                    {', '.join([item['category'] for item in st.session_state.selected_for_generation])}</p>
                                 <p><strong>Generiert:</strong> {datetime.now().strftime('%H:%M:%S')}</p>
@@ -1206,40 +1309,35 @@ def render_generate_tab():
                             # Download-Button
                             img_buffer = io.BytesIO()
                             img = Image.fromarray((generated_image * 255).astype(np.uint8))
-                            img.save(img_buffer, format="PNG", optimize=True, quality=95)
+                            img.save(img_buffer, format="PNG", optimize=True, quality=85)
                             img_buffer.seek(0)
                             
                             st.download_button(
-                                "💾 Foto herunterladen (PNG)",
+                                "💾 Design herunterladen (PNG)",
                                 data=img_buffer,
-                                file_name=f"fashion_photo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                                file_name=f"fashion_design_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
                                 mime="image/png",
                                 use_container_width=True
                             )
-                            
-                            # Social Share Mockup
-                            st.markdown("""
-                            <div style="margin-top: 15px; text-align: center;">
-                                <small style="color: #666;">📱 Perfekt für Social Media</small>
-                            </div>
-                            """, unsafe_allow_html=True)
+                    else:
+                        st.error("❌ Fehler bei der Generierung. Bitte versuche es erneut.")
 
 def render_gallery_tab():
-    """Zeigt eine professionelle Galerie der generierten Designs"""
-    st.markdown("## 🖼️ Fashion-Foto Galerie")
+    """Zeigt Galerie der generierten Designs"""
+    st.markdown("## 🖼️ Fashion-Design Galerie")
     
     if not st.session_state.generated_images:
         st.markdown("""
         <div style="text-align: center; padding: 60px; color: #666;">
-            <h3>📷 Noch keine Fashion-Fotos generiert</h3>
-            <p>Gehe zum Generator-Tab und erstelle dein erstes professionelles Fashion-Foto!</p>
+            <h3>📷 Noch keine Fashion-Designs generiert</h3>
+            <p>Gehe zum Generator-Tab und erstelle dein erstes Fashion-Design!</p>
         </div>
         """, unsafe_allow_html=True)
         return
     
-    st.markdown(f"**📸 {len(st.session_state.generated_images)} generierte Fashion-Fotos**")
+    st.markdown(f"**📸 {len(st.session_state.generated_images)} generierte Fashion-Designs**")
     
-    # Verbesserte Galerie-Darstellung
+    # Galerie-Darstellung
     for idx, gen_data in enumerate(reversed(st.session_state.generated_images)):
         with st.container():
             col1, col2 = st.columns([2, 3])
@@ -1250,10 +1348,9 @@ def render_gallery_tab():
             with col2:
                 st.markdown(f"""
                 <div style="padding: 20px;">
-                    <h4>📸 Fashion-Foto #{len(st.session_state.generated_images) - idx}</h4>
+                    <h4>📸 Fashion-Design #{len(st.session_state.generated_images) - idx}</h4>
                     <p><strong>Style:</strong> {gen_data.get('style', 'N/A')}</p>
                     <p><strong>Farben:</strong> {gen_data.get('colors', 'N/A')}</p>
-                    <p><strong>Beleuchtung:</strong> {gen_data.get('lighting', 'N/A')}</p>
                     <p><strong>Items:</strong> {', '.join(gen_data.get('items', []))}</p>
                     <p><strong>Erstellt:</strong> {gen_data.get('timestamp', 'N/A')[:19].replace('T', ' ')}</p>
                 </div>
@@ -1262,16 +1359,17 @@ def render_gallery_tab():
             st.markdown("---")
 
 def main():
+    """Hauptfunktion"""
     init_session_state()
     
-    # Verbesserter Header
+    # Header
     st.markdown("""
     <div class="main-header">🏃‍♀️ Fashion Swipe Studio</div>
-    <div class="sub-header">Professioneller Fashion Generator</div>
+    <div class="sub-header">Cloud-optimierter Fashion Generator</div>
     """, unsafe_allow_html=True)
     
-    # Navigation mit Icons
-    tab1, tab2, tab3 = st.tabs(["🔄 Fashion Swipe", "🎨 AI Generator", "🖼️ Foto-Galerie"])
+    # Navigation
+    tab1, tab2, tab3 = st.tabs(["🔄 Fashion Swipe", "🎨 AI Generator", "🖼️ Design-Galerie"])
     
     with tab1:
         render_swipe_tab()
@@ -1282,18 +1380,17 @@ def main():
     with tab3:
         render_gallery_tab()
     
-    # Verbesserter Sidebar
+    # Sidebar
     with st.sidebar:
         st.markdown("### 📊 Session-Statistiken")
         
-        # Schöne Metriken
         col1, col2 = st.columns(2)
         with col1:
             st.metric("❤️ Likes", len(st.session_state.liked_items))
         with col2:
             st.metric("⭐ Favoriten", len(st.session_state.all_time_favorites))
         
-        st.metric("📸 Generierte Fotos", len(st.session_state.generated_images))
+        st.metric("📸 Generierte Designs", len(st.session_state.generated_images))
         
         st.markdown("---")
         
@@ -1308,37 +1405,47 @@ def main():
         
         st.markdown("---")
         
-        # Info
+        # Cloud Info
         st.markdown("""
         <div style="background: #f0f8ff; padding: 15px; border-radius: 10px; font-size: 0.8rem;">
-            <strong>💡 Über Fashion AI Studio:</strong><br>
-            • Realistische Fashion-Fotografie<br>
-            • SDXL-Turbo Integration<br>
-            • Professionelle Runway-Looks<br>
-            • Optimiert für < 5GB RAM
+            <strong>☁️ Streamlit Cloud Optimiert:</strong><br>
+            • Speicher-optimiert (< 1GB RAM)<br>
+            • API-Integration verfügbar<br>
+            • Lokaler Fallback-Modus<br>
+            • Cached Fashion-MNIST
         </div>
         """, unsafe_allow_html=True)
         
-        # Optional: System Info
-        if st.checkbox("🔧 System Info"):
+        # API Status
+        if st.checkbox("🔧 API Status"):
+            generator = st.session_state.generator
+            available_apis = generator.check_api_availability()
+            
+            for api_name, is_available in available_apis.items():
+                status = "✅ Verfügbar" if is_available else "❌ Nicht konfiguriert"
+                st.caption(f"{api_name.title()}: {status}")
+        
+        # Memory Info
+        if st.checkbox("💾 Memory Info"):
             try:
                 import psutil
-                memory = psutil.virtual_memory()
-                st.metric("RAM", f"{memory.percent:.1f}%")
-                
-                if torch.cuda.is_available():
-                    st.metric("GPU", "CUDA verfügbar")
-                else:
-                    st.metric("GPU", "CPU-Modus")
+                process = psutil.Process()
+                memory_info = process.memory_info()
+                memory_mb = memory_info.rss / 1024 / 1024
+                st.caption(f"RAM: {memory_mb:.1f} MB")
             except ImportError:
                 st.caption("psutil nicht verfügbar")
 
 if __name__ == "__main__":
-    # Memory Management
+    # Memory Management für Streamlit Cloud
     try:
         import resource
-        resource.setrlimit(resource.RLIMIT_AS, (5 * 1024 * 1024 * 1024, -1))
-    except (ImportError, AttributeError):
+        # Limitiere Memory auf 1GB
+        resource.setrlimit(resource.RLIMIT_AS, (1024 * 1024 * 1024, -1))
+    except (ImportError, AttributeError, OSError):
         pass
+    
+    # Garbage Collection konfigurieren
+    gc.set_threshold(700, 10, 10)
     
     main()
