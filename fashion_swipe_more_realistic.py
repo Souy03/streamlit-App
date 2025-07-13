@@ -133,53 +133,113 @@ class FashionGenerator:
         return apis
     
     def generate_with_huggingface_api(self, prompt: str) -> Optional[Image.Image]:
-        """Nutzt Hugging Face API"""
+        """Nutzt Hugging Face API mit schnellen Turbo-Modellen"""
         api_token = os.getenv('HUGGINGFACE_TOKEN')
         if not api_token:
             return None
         
         try:
-            # Beste verfügbare Modelle
+            # Beste und schnellste verfügbare Modelle (nach Priorität)
             models = [
-                "stabilityai/stable-diffusion-xl-base-1.0",
-                "runwayml/stable-diffusion-v1-5",
-                "prompthero/openjourney-v4"
+                "stabilityai/sdxl-turbo",           # Turbo: 1-4 Steps, sehr schnell!
+                "stabilityai/sd-turbo",             # SD Turbo: auch sehr schnell
+                "runwayml/stable-diffusion-v1-5",   # Klassiker, zuverlässig
+                "stabilityai/stable-diffusion-xl-base-1.0",  # Beste Qualität
+                "prompthero/openjourney-v4",        # Künstlerisch
+                "SG161222/Realistic_Vision_V2.0"    # Fotorealistisch
             ]
             
-            for model in models:
+            for model_idx, model in enumerate(models):
                 try:
                     API_URL = f"https://api-inference.huggingface.co/models/{model}"
                     headers = {"Authorization": f"Bearer {api_token}"}
                     
-                    payload = {
-                        "inputs": prompt,
-                        "parameters": {
-                            "negative_prompt": "blurry, bad quality, distorted, amateur, cartoon, anime, low resolution",
-                            "num_inference_steps": 25,
-                            "guidance_scale": 7.5,
-                            "width": 512,
-                            "height": 768
+                    # Model-spezifische Parameter
+                    if "turbo" in model.lower():
+                        # Turbo-Modelle: Sehr wenige Steps für Geschwindigkeit
+                        payload = {
+                            "inputs": prompt,
+                            "parameters": {
+                                "negative_prompt": "blurry, bad quality, distorted, amateur, cartoon, anime, low resolution, deformed",
+                                "num_inference_steps": 2 if "sdxl-turbo" in model else 4,  # Turbo braucht nur 1-4 Steps!
+                                "guidance_scale": 0.0 if "sdxl-turbo" in model else 1.0,   # Turbo ohne Guidance
+                                "width": 512,
+                                "height": 768
+                            }
                         }
-                    }
+                        model_name = "SDXL-Turbo ⚡" if "sdxl" in model else "SD-Turbo ⚡"
+                    else:
+                        # Standard-Modelle: Normale Parameter
+                        payload = {
+                            "inputs": prompt,
+                            "parameters": {
+                                "negative_prompt": "blurry, bad quality, distorted, amateur, cartoon, anime, low resolution, deformed",
+                                "num_inference_steps": 20 if "xl" in model else 25,
+                                "guidance_scale": 7.5,
+                                "width": 512,
+                                "height": 768
+                            }
+                        }
+                        model_name = model.split('/')[-1].replace('-', ' ').title()
                     
-                    st.info(f"🎨 Versuche {model.split('/')[-1]}...")
-                    response = requests.post(API_URL, headers=headers, json=payload, timeout=60)
+                    st.info(f"🎨 Versuche {model_name} (Model {model_idx + 1}/{len(models)})...")
+                    
+                    # Request mit Timeout
+                    timeout = 30 if "turbo" in model.lower() else 60  # Turbo ist schneller
+                    response = requests.post(API_URL, headers=headers, json=payload, timeout=timeout)
                     
                     if response.status_code == 200:
                         content_type = response.headers.get('content-type', '')
                         if 'image' in content_type:
+                            st.success(f"✅ {model_name} erfolgreich!")
                             return Image.open(io.BytesIO(response.content))
+                        else:
+                            # Manchmal JSON Response mit Error
+                            try:
+                                error_data = response.json()
+                                if 'error' in error_data:
+                                    st.warning(f"⚠️ {model_name}: {error_data['error'][:50]}...")
+                                continue
+                            except:
+                                continue
+                                
                     elif response.status_code == 503:
-                        st.warning(f"⏳ Model {model.split('/')[-1]} lädt... versuche nächstes Modell")
-                        continue
-                    else:
-                        st.warning(f"⚠️ {model.split('/')[-1]}: HTTP {response.status_code}")
+                        st.warning(f"⏳ {model_name} lädt... (ca. 20s)")
+                        
+                        # Bei Turbo-Modellen: Kurz warten und nochmal versuchen
+                        if "turbo" in model.lower() and model_idx == 0:
+                            st.info("⚡ Turbo-Model startet - 15 Sekunden warten...")
+                            time.sleep(15)
+                            
+                            # Zweiter Versuch für Turbo
+                            response2 = requests.post(API_URL, headers=headers, json=payload, timeout=30)
+                            if response2.status_code == 200:
+                                content_type = response2.headers.get('content-type', '')
+                                if 'image' in content_type:
+                                    st.success(f"✅ {model_name} erfolgreich (2. Versuch)!")
+                                    return Image.open(io.BytesIO(response2.content))
+                        
                         continue
                         
+                    elif response.status_code == 400:
+                        st.warning(f"⚠️ {model_name}: Parameter-Fehler")
+                        continue
+                    elif response.status_code == 429:
+                        st.warning(f"⚠️ {model_name}: Rate Limit - versuche nächstes Model")
+                        continue
+                    else:
+                        st.warning(f"⚠️ {model_name}: HTTP {response.status_code}")
+                        continue
+                        
+                except requests.Timeout:
+                    st.warning(f"⏰ {model_name}: Timeout - versuche nächstes Model")
+                    continue
                 except Exception as e:
-                    st.warning(f"❌ {model.split('/')[-1]} Fehler: {str(e)[:50]}...")
+                    st.warning(f"❌ {model_name}: {str(e)[:50]}...")
                     continue
             
+            # Alle Modelle fehlgeschlagen
+            st.error("❌ Alle Hugging Face Modelle nicht verfügbar")
             return None
             
         except Exception as e:
