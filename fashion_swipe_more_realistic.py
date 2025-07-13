@@ -124,16 +124,16 @@ class FashionGenerator:
         self.available_apis = self.check_api_availability()
         
     def check_api_availability(self) -> Dict[str, bool]:
-        """Prüft verfügbare Models"""
+        """Prüft verfügbare APIs"""
         apis = {
-            'diffusion_models': bool(os.getenv('HUGGINGFACE_TOKEN')),
+            'huggingface': bool(os.getenv('HUGGINGFACE_TOKEN')),
             'stability': bool(os.getenv('STABILITY_API_KEY')),
             'replicate': bool(os.getenv('REPLICATE_API_TOKEN')),
         }
         return apis
     
     def generate_with_huggingface_api(self, prompt: str, preferred_model: str = "auto") -> Optional[Image.Image]:
-        """Nutzt Diffusion Models mit Model-Auswahl"""
+        """Nutzt Hugging Face API mit Model-Auswahl"""
         api_token = os.getenv('HUGGINGFACE_TOKEN')
         if not api_token:
             return None
@@ -612,9 +612,9 @@ def create_fashion_prompt(selected_items: List[Dict], style_prompt: str) -> str:
     return full_prompt
 
 def create_sample_fashion_items():
-    """Lädt echte Fashion-MNIST oder buntes CIFAR-10 Dataset"""
+    """Lädt echte Fashion-MNIST Daten"""
     try:
-        # Versuche zuerst Fashion-MNIST
+        # Versuche Fashion-MNIST zu laden
         import tensorflow as tf
         
         # Lade Fashion-MNIST
@@ -633,9 +633,6 @@ def create_sample_fashion_items():
             label = y_train[idx]
             category = FASHION_CLASSES[label]
             
-            # Konvertiere Grayscale zu RGB und füge Farbe hinzu
-            colored_image = colorize_fashion_item(image, category)
-            
             item = {
                 "id": i + 1,
                 "name": f"{category} Collection #{idx}",
@@ -643,7 +640,7 @@ def create_sample_fashion_items():
                 "price": random.choice(prices),
                 "category": category,
                 "description": f"Premium {category.lower()} aus der neuesten Kollektion",
-                "image_data": image_to_base64(colored_image),
+                "image_data": image_to_base64(image),
                 "original_index": idx,
                 "label": label,
                 "timestamp": datetime.now().isoformat()
@@ -658,205 +655,12 @@ def create_sample_fashion_items():
         return items
         
     except ImportError:
-        # Fallback: TensorFlow nicht verfügbar, verwende bunte Sample-Bilder
-        st.warning("📦 TensorFlow nicht verfügbar - verwende bunte Sample-Daten")
-        return create_colorful_sample_items()
+        # Fallback: TensorFlow nicht verfügbar, verwende bessere Sample-Bilder
+        st.warning("📦 TensorFlow nicht verfügbar - verwende Sample-Daten")
+        return create_enhanced_sample_items()
     except Exception as e:
-        st.warning(f"⚠️ Fashion-MNIST Fehler: {e} - verwende bunte Sample-Daten")
-        return create_colorful_sample_items()
-
-def colorize_fashion_item(gray_image: np.ndarray, category: str) -> np.ndarray:
-    """Fügt realistische Farben zu Fashion-MNIST Items hinzu"""
-    # Konvertiere zu RGB
-    rgb_image = np.stack([gray_image] * 3, axis=-1)
-    
-    # Category-basierte Farbpaletten
-    color_palettes = {
-        "T-Shirt/Top": [(255, 255, 255), (0, 0, 0), (100, 150, 200), (200, 100, 100)],  # Weiß, Schwarz, Blau, Rosa
-        "Hose": [(0, 0, 139), (0, 0, 0), (139, 69, 19), (128, 128, 128)],  # Navy, Schwarz, Braun, Grau
-        "Pullover": [(139, 0, 0), (0, 100, 0), (75, 0, 130), (255, 140, 0)],  # Rot, Grün, Lila, Orange
-        "Kleid": [(255, 20, 147), (138, 43, 226), (0, 191, 255), (255, 105, 180)],  # Pink, Violett, Himmelblau, Hotpink
-        "Mantel": [(139, 69, 19), (0, 0, 0), (128, 128, 128), (25, 25, 112)],  # Braun, Schwarz, Grau, Navy
-        "Sandalen": [(222, 184, 135), (139, 69, 19), (0, 0, 0), (255, 255, 255)],  # Beige, Braun, Schwarz, Weiß
-        "Hemd": [(255, 255, 255), (173, 216, 230), (255, 182, 193), (144, 238, 144)],  # Weiß, Hellblau, Rosa, Hellgrün
-        "Sneaker": [(255, 255, 255), (0, 0, 0), (255, 0, 0), (0, 255, 0)],  # Weiß, Schwarz, Rot, Grün
-        "Tasche": [(139, 69, 19), (0, 0, 0), (255, 215, 0), (220, 20, 60)],  # Braun, Schwarz, Gold, Crimson
-        "Stiefeletten": [(139, 69, 19), (0, 0, 0), (128, 128, 128), (160, 82, 45)]  # Braun, Schwarz, Grau, Sattelbraun
-    }
-    
-    # Wähle zufällige Farbe für die Kategorie
-    palette = color_palettes.get(category, [(128, 128, 128)])
-    chosen_color = random.choice(palette)
-    
-    # Appliziere Farbe nur auf die Objektpixel (nicht auf Hintergrund)
-    # Threshold für Objekterkennung
-    mask = gray_image > 50  # Pixel heller als 50 sind wahrscheinlich Objekt
-    
-    # Färbe das Objekt
-    for i in range(3):  # RGB Kanäle
-        channel = rgb_image[:, :, i].astype(float)
-        # Mische Originalton mit gewählter Farbe
-        colored_channel = channel * (chosen_color[i] / 255.0)
-        # Behalte Struktur bei aber füge Farbe hinzu
-        rgb_image[:, :, i] = np.where(mask, colored_channel * 0.8 + channel * 0.2, channel)
-    
-    return rgb_image.astype(np.uint8)
-
-def create_colorful_sample_items():
-    """Erstellt bunte Sample Fashion Items (falls Fashion-MNIST nicht verfügbar)"""
-    items = []
-    brands = ["Chanel", "Dior", "Versace", "Prada", "Gucci", "Armani", "Zara", "H&M", "COS", "Uniqlo"]
-    prices = ["45€", "65€", "85€", "120€", "150€", "200€", "250€", "300€", "450€", "600€"]
-    
-    # Vibrant Fashion Farben
-    fashion_colors = [
-        (220, 20, 60),    # Crimson
-        (0, 191, 255),    # Deep Sky Blue
-        (255, 20, 147),   # Deep Pink
-        (50, 205, 50),    # Lime Green
-        (255, 140, 0),    # Dark Orange
-        (138, 43, 226),   # Blue Violet
-        (255, 215, 0),    # Gold
-        (220, 220, 220),  # Gainsboro
-        (0, 0, 0),        # Black
-        (255, 255, 255),  # White
-        (139, 69, 19),    # Saddle Brown
-        (25, 25, 112),    # Midnight Blue
-        (128, 0, 128),    # Purple
-        (255, 69, 0),     # Red Orange
-        (46, 139, 87),    # Sea Green
-        (199, 21, 133),   # Medium Violet Red
-        (255, 182, 193),  # Light Pink
-        (176, 224, 230),  # Powder Blue
-        (144, 238, 144),  # Light Green
-        (255, 160, 122)   # Light Salmon
-    ]
-    
-    for i in range(20):
-        category_idx = i % len(FASHION_CLASSES)
-        category = FASHION_CLASSES[category_idx]
-        
-        # Erstelle farbige Fashion-Bilder
-        img = Image.new('RGB', (28, 28), color=(245, 245, 245))
-        draw = ImageDraw.Draw(img)
-        
-        # Wähle passende Farben für die Kategorie
-        primary_color = fashion_colors[i % len(fashion_colors)]
-        accent_color = fashion_colors[(i + 5) % len(fashion_colors)]
-        
-        # Realistischere Formen je nach Kategorie mit Farben
-        if category in ["T-Shirt/Top", "Hemd", "Pullover"]:
-            # Buntes Oberteil
-            draw.polygon([(6, 8), (22, 8), (24, 12), (20, 20), (8, 20), (4, 12)], fill=primary_color)
-            # Farbige Ärmel
-            draw.rectangle([2, 10, 6, 18], fill=primary_color)
-            draw.rectangle([22, 10, 26, 18], fill=primary_color)
-            # Akzent-Details
-            draw.line([(10, 8), (18, 8)], fill=accent_color, width=2)
-            draw.ellipse([12, 12, 16, 16], fill=accent_color)
-            
-        elif category == "Kleid":
-            # Buntes Kleid
-            draw.polygon([(8, 6), (20, 6), (22, 12), (26, 26), (2, 26), (6, 12)], fill=primary_color)
-            # Ärmel
-            draw.rectangle([4, 8, 8, 14], fill=primary_color)
-            draw.rectangle([20, 8, 24, 14], fill=primary_color)
-            # Muster/Akzente
-            draw.line([(6, 16), (22, 16)], fill=accent_color, width=2)
-            for x in range(8, 20, 3):
-                draw.circle((x, 20), 1, fill=accent_color)
-            
-        elif category == "Hose":
-            # Farbige Hose
-            draw.rectangle([8, 12, 12, 26], fill=primary_color)
-            draw.rectangle([16, 12, 20, 26], fill=primary_color)
-            # Gürtel
-            draw.rectangle([6, 10, 22, 14], fill=accent_color)
-            # Nähte
-            draw.line([(10, 14), (10, 26)], fill=accent_color, width=1)
-            draw.line([(18, 14), (18, 26)], fill=accent_color, width=1)
-            
-        elif category == "Mantel":
-            # Farbiger Mantel
-            draw.polygon([(4, 6), (24, 6), (26, 12), (24, 26), (4, 26), (2, 12)], fill=primary_color)
-            # Ärmel
-            draw.rectangle([0, 8, 4, 22], fill=primary_color)
-            draw.rectangle([24, 8, 28, 22], fill=primary_color)
-            # Bunte Knöpfe
-            for y in [10, 14, 18, 22]:
-                draw.ellipse([12, y, 16, y+3], fill=accent_color)
-            # Kragen
-            draw.polygon([(10, 6), (18, 6), (20, 10), (8, 10)], fill=accent_color)
-            
-        elif category in ["Sneaker", "Sandalen", "Stiefeletten"]:
-            if category == "Stiefeletten":
-                # Bunte Stiefel
-                draw.ellipse([4, 16, 12, 24], fill=primary_color)
-                draw.ellipse([16, 16, 24, 24], fill=primary_color)
-                draw.rectangle([5, 8, 11, 18], fill=primary_color)
-                draw.rectangle([17, 8, 23, 18], fill=primary_color)
-                # Bunte Schnürung
-                for y in [10, 13, 16]:
-                    draw.line([(6, y), (10, y)], fill=accent_color, width=2)
-                    draw.line([(18, y), (22, y)], fill=accent_color, width=2)
-            else:
-                # Bunte Schuhe
-                draw.ellipse([4, 18, 12, 26], fill=primary_color)
-                draw.ellipse([16, 18, 24, 26], fill=primary_color)
-                # Bunte Sohle
-                draw.arc([4, 20, 12, 26], 0, 180, fill=accent_color, width=3)
-                draw.arc([16, 20, 24, 26], 0, 180, fill=accent_color, width=3)
-                # Logo/Streifen
-                draw.line([(6, 21), (10, 21)], fill=accent_color, width=2)
-                draw.line([(18, 21), (22, 21)], fill=accent_color, width=2)
-                
-        elif category == "Tasche":
-            # Bunte Handtasche
-            draw.rectangle([8, 12, 20, 22], fill=primary_color)
-            # Henkel
-            draw.arc([10, 8, 18, 14], 0, 180, fill=accent_color, width=3)
-            # Verschluss
-            draw.rectangle([12, 12, 16, 14], fill=accent_color)
-            # Muster
-            draw.rectangle([9, 16, 19, 18], fill=accent_color)
-            for x in range(10, 19, 2):
-                draw.circle((x, 19), 1, fill=accent_color)
-            
-        else:  # Sandalen
-            # Bunte Sandalen
-            draw.ellipse([4, 20, 12, 26], fill=primary_color)
-            draw.ellipse([16, 20, 24, 26], fill=primary_color)
-            # Bunte Riemen
-            draw.line([(6, 18), (10, 22)], fill=accent_color, width=3)
-            draw.line([(18, 18), (22, 22)], fill=accent_color, width=3)
-            draw.line([(4, 22), (12, 22)], fill=accent_color, width=2)
-            draw.line([(16, 22), (24, 22)], fill=accent_color, width=2)
-        
-        # Schatten für Tiefe
-        shadow_img = Image.new('RGBA', (28, 28), (0, 0, 0, 0))
-        shadow_draw = ImageDraw.Draw(shadow_img)
-        
-        # Leichter Schatten rechts unten
-        if category != "Tasche":
-            shadow_draw.ellipse([12, 22, 20, 27], fill=(0, 0, 0, 40))
-        
-        img = Image.alpha_composite(img.convert('RGBA'), shadow_img).convert('RGB')
-        
-        item = {
-            "id": i + 1,
-            "name": f"{category} Collection #{i+1}",
-            "brand": random.choice(brands),
-            "price": random.choice(prices),
-            "category": category,
-            "description": f"Premium {category.lower()} aus der neuesten Kollektion",
-            "image_data": image_to_base64(np.array(img)),
-            "original_index": i,
-            "label": category_idx,
-            "timestamp": datetime.now().isoformat()
-        }
-        items.append(item)
-    
-    return items
+        st.warning(f"⚠️ Fashion-MNIST Fehler: {e} - verwende Sample-Daten")
+        return create_enhanced_sample_items()
 
 def create_enhanced_sample_items():
     """Erstellt verbesserte Sample Fashion Items (falls Fashion-MNIST nicht verfügbar)"""
@@ -1037,13 +841,13 @@ def generate_fashion_design(selected_items: List[Dict], style_prompt: str,
         available_apis = generator.check_api_availability()
         generated_image = None
         
-        # Versuche Diffusion Models mit gewähltem Model
-        if available_apis['diffusion_models']:
-            status_text.text("🎨 Generiere mit Diffusion Model...")
+        # Versuche Hugging Face API mit gewähltem Model
+        if available_apis['huggingface']:
+            status_text.text("🤗 Generiere mit Hugging Face API...")
             progress_bar.progress(0.4)
             generated_image = generator.generate_with_huggingface_api(prompt, preferred_model)
             if generated_image:
-                status_text.text("✅ Diffusion Model erfolgreich!")
+                status_text.text("✅ AI-Generierung erfolgreich!")
         
         if generated_image is None:
             # Fallback
@@ -1176,26 +980,26 @@ def render_swipe_tab():
 
 def render_generate_tab():
     """Rendert den Generate-Tab"""
-    st.markdown("## 🎨 Fashion-Diffusion Generator")
+    st.markdown("## 🎨 Fashion-Generator Pro")
     
     # API Status anzeigen
     generator = st.session_state.generator
     available_apis = generator.check_api_availability()
     
-    if available_apis['diffusion_models']:
+    if available_apis['huggingface']:
         st.markdown("""
         <div class="generation-alert">
-            <h3>🎨 Diffusion Models aktiv!</h3>
-            <p>✅ <strong>SDXL & RealVIS</strong> verfügbar<br>
+            <h3>🚀 Hugging Face API aktiv!</h3>
+            <p>✅ <strong>Stable Diffusion XL</strong> verfügbar<br>
             ✅ <strong>Professionelle Fashion-Fotografien</strong><br>
-            ✅ <strong>Model-Auswahl verfügbar</strong></p>
+            ✅ <strong>Kostenlose Premium-Qualität</strong></p>
         </div>
         """, unsafe_allow_html=True)
     else:
         st.markdown("""
         <div class="generation-alert">
-            <h3>💡 Diffusion Models Setup</h3>
-            <p>Für fotorealistische Fashion-Designs, füge deinen Token in den Streamlit Secrets hinzu:</p>
+            <h3>💡 Hugging Face Setup</h3>
+            <p>Für AI-generierte Fashion-Fotos, füge deinen Token in den Streamlit Secrets hinzu:</p>
             <pre>HUGGINGFACE_TOKEN = "hf_dein_token_hier"</pre>
         </div>
         """, unsafe_allow_html=True)
@@ -1254,7 +1058,7 @@ def render_generate_tab():
             color_scheme = st.selectbox("🎨 Farben", ["Natürlich", "Monochrom", "Pastell", "Kräftig"])
         
         with col3:
-            # Diffusion Model Auswahl
+            # AI Model Auswahl
             generator = st.session_state.generator
             models_info = generator.get_available_models_info()
             
@@ -1267,7 +1071,7 @@ def render_generate_tab():
                 model_keys.append(key)
             
             selected_model_idx = st.selectbox(
-                "🎨 Diffusion Model", 
+                "🤖 AI Model", 
                 range(len(model_options)),
                 format_func=lambda x: model_options[x],
                 help="Wähle Qualität vs. Geschwindigkeit"
@@ -1332,7 +1136,7 @@ def render_generate_tab():
                         """, unsafe_allow_html=True)
                         
                         st.image(generated_image, 
-                               caption=f"Fashion-Design ({generation_data['model_used']})",
+                               caption=f"Fashion-Design ({api_used})",
                                use_column_width=True)
                         
                         st.markdown("</div></div>", unsafe_allow_html=True)
@@ -1345,7 +1149,7 @@ def render_generate_tab():
                             <p><strong>Style:</strong> {style_mood}</p>
                             <p><strong>Farben:</strong> {color_scheme}</p>
                             <p><strong>Items:</strong> {', '.join([item['category'] for item in st.session_state.selected_for_generation])}</p>
-                            <p><strong>Generiert mit:</strong> {generation_data['model_used']}</p>
+                            <p><strong>Generiert mit:</strong> {api_used}</p>
                             <p><strong>Zeit:</strong> {datetime.now().strftime('%H:%M:%S')}</p>
                         </div>
                         """, unsafe_allow_html=True)
@@ -1390,20 +1194,16 @@ def render_gallery_tab():
                 st.image(gen_data['image'], use_column_width=True)
             
             with col2:
-                model_badge = "🎨 Diffusion" if "Model" in gen_data.get('model_used', '') else "🖼️ Local"
+                api_badge = "🤖 AI" if "AI" in gen_data.get('api_used', '') else "🎨 Local"
                 
                 st.markdown(f"""
                 <div style="padding: 20px;">
                     <h4>📸 Design #{len(st.session_state.generated_images) - idx}</h4>
                     <div style="background: #f8f9fa; padding: 8px; border-radius: 5px; margin: 8px 0;">
-                        <strong>{model_badge} {gen_data.get('model_used', 'N/A')}</strong>
+                        <strong>{api_badge} {gen_data.get('api_used', 'N/A')}</strong>
                     </div>
                     <p><strong>Style:</strong> {gen_data.get('style', 'N/A')}</p>
                     <p><strong>Farben:</strong> {gen_data.get('colors', 'N/A')}</p>
-                    <p><strong>Items:</strong> {', '.join(gen_data.get('items', []))}</p>
-                    <p><strong>Erstellt:</strong> {gen_data.get('timestamp', 'N/A')[:19].replace('T', ' ')}</p>
-                </div>
-                """, unsafe_allow_html=True)<strong>Farben:</strong> {gen_data.get('colors', 'N/A')}</p>
                     <p><strong>Items:</strong> {', '.join(gen_data.get('items', []))}</p>
                     <p><strong>Erstellt:</strong> {gen_data.get('timestamp', 'N/A')[:19].replace('T', ' ')}</p>
                 </div>
@@ -1417,12 +1217,12 @@ def main():
     
     # Header
     st.markdown("""
-    <div class="main-header"> Fashion Swipe Studio</div>
-    <div class="sub-header">Professionelle Diffusion Models & Bunte Datasets!</div>
+    <div class="main-header">🏃‍♀️ Fashion Swipe Studio</div>
+    <div class="sub-header">Funktioniert mit Hugging Face AI!</div>
     """, unsafe_allow_html=True)
     
     # Navigation
-    tab1, tab2, tab3 = st.tabs(["🔄 Fashion Swipe", "🎨 Diffusion Generator", "🖼️ Galerie"])
+    tab1, tab2, tab3 = st.tabs(["🔄 Fashion Swipe", "🎨 AI Generator", "🖼️ Galerie"])
     
     with tab1:
         render_swipe_tab()
@@ -1458,22 +1258,22 @@ def main():
         
         st.markdown("---")
         
-        # Model Status
-        st.markdown("### 🎨 Model Status")
+        # API Status
+        st.markdown("### 🔧 API Status")
         generator = st.session_state.generator
         available_apis = generator.check_api_availability()
         
-        if available_apis['diffusion_models']:
+        if available_apis['huggingface']:
             st.markdown("""
             <div class="api-status">
-                <strong>✅ Diffusion Models</strong><br>
-                <small>SDXL & RealVIS verfügbar</small>
+                <strong>✅ Hugging Face</strong><br>
+                <small>Token aktiv</small>
             </div>
             """, unsafe_allow_html=True)
         else:
             st.markdown("""
             <div class="api-status unavailable">
-                <strong>❌ Diffusion Models</strong><br>
+                <strong>❌ Hugging Face</strong><br>
                 <small>Token fehlt</small>
             </div>
             """, unsafe_allow_html=True)
@@ -1483,11 +1283,11 @@ def main():
         # Info
         st.markdown("""
         <div style="background: #f0f8ff; padding: 15px; border-radius: 10px; font-size: 0.8rem;">
-            <strong>🎨 Fashion Swipe Studio:</strong><br>
-            • Diffusion Model Integration<br>
-            • SDXL & RealVIS Models<br>
+            <strong>🚀 Fashion Swipe Studio:</strong><br>
+            • Hugging Face AI Integration<br>
+            • Stable Diffusion XL<br>
             • Professionelle Fashion-Fotos<br>
-            • Bunte Fashion-Datasets<br>
+            • Kostenlose Premium-Qualität<br>
             • Optimiert für Streamlit Cloud
         </div>
         """, unsafe_allow_html=True)
