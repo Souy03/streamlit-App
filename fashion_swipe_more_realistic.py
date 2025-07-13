@@ -443,39 +443,173 @@ def create_fashion_prompt(selected_items: List[Dict], style_prompt: str) -> str:
     return full_prompt
 
 def create_sample_fashion_items():
-    """Erstellt Sample Fashion Items"""
+    """Lädt echte Fashion-MNIST Daten"""
+    try:
+        # Versuche Fashion-MNIST zu laden
+        import tensorflow as tf
+        
+        # Lade Fashion-MNIST
+        (x_train, y_train), (x_test, y_test) = tf.keras.datasets.fashion_mnist.load_data()
+        
+        # Nimm eine kleinere Auswahl für bessere Performance
+        num_items = 20
+        random_indices = np.random.choice(len(x_train), size=num_items, replace=False)
+        
+        items = []
+        brands = ["Chanel", "Dior", "Versace", "Prada", "Gucci", "Armani", "Zara", "H&M", "COS", "Uniqlo"]
+        prices = ["45€", "65€", "85€", "120€", "150€", "200€", "250€", "300€", "450€", "600€"]
+        
+        for i, idx in enumerate(random_indices):
+            image = x_train[idx]
+            label = y_train[idx]
+            category = FASHION_CLASSES[label]
+            
+            item = {
+                "id": i + 1,
+                "name": f"{category} Collection #{idx}",
+                "brand": random.choice(brands),
+                "price": random.choice(prices),
+                "category": category,
+                "description": f"Premium {category.lower()} aus der neuesten Kollektion",
+                "image_data": image_to_base64(image),
+                "original_index": idx,
+                "label": label,
+                "timestamp": datetime.now().isoformat()
+            }
+            items.append(item)
+        
+        # Cleanup für Memory
+        del x_train, y_train, x_test, y_test
+        import gc
+        gc.collect()
+        
+        return items
+        
+    except ImportError:
+        # Fallback: TensorFlow nicht verfügbar, verwende bessere Sample-Bilder
+        st.warning("📦 TensorFlow nicht verfügbar - verwende Sample-Daten")
+        return create_enhanced_sample_items()
+    except Exception as e:
+        st.warning(f"⚠️ Fashion-MNIST Fehler: {e} - verwende Sample-Daten")
+        return create_enhanced_sample_items()
+
+def create_enhanced_sample_items():
+    """Erstellt verbesserte Sample Fashion Items (falls Fashion-MNIST nicht verfügbar)"""
     items = []
     brands = ["Chanel", "Dior", "Versace", "Prada", "Gucci", "Armani", "Zara", "H&M", "COS", "Uniqlo"]
-    prices = ["45€", "65€", "85€", "120€", "150€", "200€", "250€", "300€"]
+    prices = ["45€", "65€", "85€", "120€", "150€", "200€", "250€", "300€", "450€", "600€"]
     
     for i in range(20):
         category_idx = i % len(FASHION_CLASSES)
         category = FASHION_CLASSES[category_idx]
         
-        # Erstelle Sample-Bild
-        img = Image.new('RGB', (28, 28), color=(240, 240, 240))
+        # Erstelle realistischere Fashion-Bilder
+        img = Image.new('RGB', (28, 28), color=(245, 245, 245))
         draw = ImageDraw.Draw(img)
         
-        color = (random.randint(50, 200), random.randint(50, 200), random.randint(50, 200))
+        # Verschiedene realistische Farben
+        colors = [
+            (50, 50, 50),      # Schwarz
+            (100, 50, 50),     # Dunkelrot
+            (50, 50, 100),     # Navy
+            (100, 80, 60),     # Braun
+            (80, 80, 80),      # Grau
+            (120, 100, 80),    # Beige
+            (60, 80, 60),      # Olivgrün
+            (80, 60, 80),      # Violett
+            (100, 100, 60),    # Senfgelb
+            (60, 100, 100),    # Türkis
+        ]
         
+        base_color = colors[i % len(colors)]
+        
+        # Realistischere Formen je nach Kategorie
         if category in ["T-Shirt/Top", "Hemd", "Pullover"]:
-            draw.rectangle([4, 6, 24, 18], fill=color)
-            draw.rectangle([2, 8, 6, 16], fill=color)
-            draw.rectangle([22, 8, 26, 16], fill=color)
+            # Oberteil mit realistischer Form
+            draw.polygon([(6, 8), (22, 8), (24, 12), (20, 20), (8, 20), (4, 12)], fill=base_color)
+            # Ärmel
+            draw.rectangle([2, 10, 6, 18], fill=base_color)
+            draw.rectangle([22, 10, 26, 18], fill=base_color)
+            # Details
+            draw.line([(10, 8), (18, 8)], fill=tuple(c+30 for c in base_color), width=1)
+            
         elif category == "Kleid":
-            draw.polygon([(6, 6), (22, 6), (24, 26), (4, 26)], fill=color)
+            # Kleid mit A-Linie
+            draw.polygon([(8, 6), (20, 6), (22, 12), (26, 26), (2, 26), (6, 12)], fill=base_color)
+            # Ärmel
+            draw.rectangle([4, 8, 8, 14], fill=base_color)
+            draw.rectangle([20, 8, 24, 14], fill=base_color)
+            # Taille
+            draw.line([(6, 16), (22, 16)], fill=tuple(c+20 for c in base_color), width=1)
+            
         elif category == "Hose":
-            draw.rectangle([6, 10, 10, 26], fill=color)
-            draw.rectangle([18, 10, 22, 26], fill=color)
+            # Realistische Hose
+            draw.rectangle([8, 12, 12, 26], fill=base_color)
+            draw.rectangle([16, 12, 20, 26], fill=base_color)
+            # Bund
+            draw.rectangle([6, 10, 22, 14], fill=tuple(c+15 for c in base_color))
+            # Bügelfalte
+            draw.line([(10, 14), (10, 26)], fill=tuple(c+25 for c in base_color), width=1)
+            draw.line([(18, 14), (18, 26)], fill=tuple(c+25 for c in base_color), width=1)
+            
         elif category == "Mantel":
-            draw.rectangle([2, 4, 26, 26], fill=color)
+            # Langer Mantel
+            draw.polygon([(4, 6), (24, 6), (26, 12), (24, 26), (4, 26), (2, 12)], fill=base_color)
+            # Ärmel
+            draw.rectangle([0, 8, 4, 22], fill=base_color)
+            draw.rectangle([24, 8, 28, 22], fill=base_color)
+            # Knöpfe
+            for y in [10, 14, 18, 22]:
+                draw.ellipse([13, y, 15, y+2], fill=tuple(c+40 for c in base_color))
+            # Kragen
+            draw.polygon([(10, 6), (18, 6), (20, 10), (8, 10)], fill=tuple(c+20 for c in base_color))
+            
         elif category in ["Sneaker", "Sandalen", "Stiefeletten"]:
-            draw.ellipse([4, 18, 12, 26], fill=color)
-            draw.ellipse([16, 18, 24, 26], fill=color)
+            if category == "Stiefeletten":
+                # Hohe Stiefel
+                draw.ellipse([4, 16, 12, 24], fill=base_color)
+                draw.ellipse([16, 16, 24, 24], fill=base_color)
+                draw.rectangle([5, 8, 11, 18], fill=base_color)
+                draw.rectangle([17, 8, 23, 18], fill=base_color)
+                # Schnürung
+                for y in [10, 13, 16]:
+                    draw.line([(6, y), (10, y)], fill=tuple(c+30 for c in base_color), width=1)
+                    draw.line([(18, y), (22, y)], fill=tuple(c+30 for c in base_color), width=1)
+            else:
+                # Normale Schuhe
+                draw.ellipse([4, 18, 12, 26], fill=base_color)
+                draw.ellipse([16, 18, 24, 26], fill=base_color)
+                # Sohle
+                draw.arc([4, 20, 12, 26], 0, 180, fill=tuple(c+40 for c in base_color), width=2)
+                draw.arc([16, 20, 24, 26], 0, 180, fill=tuple(c+40 for c in base_color), width=2)
+                
         elif category == "Tasche":
-            draw.rectangle([8, 8, 20, 20], fill=color)
-        else:
-            draw.ellipse([6, 6, 22, 22], fill=color)
+            # Handtasche
+            draw.rectangle([8, 12, 20, 22], fill=base_color)
+            # Henkel
+            draw.arc([10, 8, 18, 14], 0, 180, fill=tuple(c+20 for c in base_color), width=2)
+            # Verschluss
+            draw.rectangle([12, 12, 16, 14], fill=tuple(c+30 for c in base_color))
+            # Details
+            draw.rectangle([9, 16, 19, 18], fill=tuple(c+15 for c in base_color))
+            
+        else:  # Sandalen
+            # Sandalen
+            draw.ellipse([4, 20, 12, 26], fill=base_color)
+            draw.ellipse([16, 20, 24, 26], fill=base_color)
+            # Riemen
+            draw.line([(6, 18), (10, 22)], fill=tuple(c+25 for c in base_color), width=2)
+            draw.line([(18, 18), (22, 22)], fill=tuple(c+25 for c in base_color), width=2)
+        
+        # Schatten für Tiefe
+        shadow_img = Image.new('RGBA', (28, 28), (0, 0, 0, 0))
+        shadow_draw = ImageDraw.Draw(shadow_img)
+        
+        # Leichter Schatten rechts unten
+        if category != "Tasche":
+            shadow_draw.ellipse([12, 22, 20, 27], fill=(0, 0, 0, 30))
+        
+        img = Image.alpha_composite(img.convert('RGBA'), shadow_img).convert('RGB')
         
         item = {
             "id": i + 1,
