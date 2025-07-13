@@ -1137,7 +1137,7 @@ def render_generate_tab():
                         
                         st.image(generated_image, 
                                caption=f"Fashion-Design ({api_used})",
-                               use_column_width=True)
+                               use_container_width=True)
                         
                         st.markdown("</div></div>", unsafe_allow_html=True)
                     
@@ -1191,7 +1191,7 @@ def render_gallery_tab():
             col1, col2 = st.columns([2, 3])
             
             with col1:
-                st.image(gen_data['image'], use_column_width=True)
+                st.image(gen_data['image'], use_container_width=True)
             
             with col2:
                 api_badge = "🤖 AI" if "AI" in gen_data.get('api_used', '') else "🎨 Local"
