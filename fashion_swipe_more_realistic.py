@@ -139,14 +139,15 @@ class FashionGenerator:
             return None
         
         try:
-            # Beste und schnellste verfügbare Modelle (nach Priorität)
+            # Beste Modelle für Fashion-Fotografie (optimierte Reihenfolge)
             models = [
-                "stabilityai/sdxl-turbo",           # Turbo: 1-4 Steps, sehr schnell!
-                "stabilityai/sd-turbo",             # SD Turbo: auch sehr schnell
-                "runwayml/stable-diffusion-v1-5",   # Klassiker, zuverlässig
-                "stabilityai/stable-diffusion-xl-base-1.0",  # Beste Qualität
-                "prompthero/openjourney-v4",        # Künstlerisch
-                "SG161222/Realistic_Vision_V2.0"    # Fotorealistisch
+                "stabilityai/sdxl-turbo",           # 🚀 Speed: 1-4 Steps, ultra-schnell
+                "SG161222/RealVisXL_V4.0",         # 📸 Fotorealismus: beste Menschen/Fashion
+                "stabilityai/sd-turbo",             # ⚡ Alternative Turbo
+                "SG161222/Realistic_Vision_V6.0_B1_noVAE",  # 📷 Realistisch, bewährt
+                "runwayml/stable-diffusion-v1-5",   # 🔄 Zuverlässiger Klassiker
+                "stabilityai/stable-diffusion-xl-base-1.0",  # 🎨 SDXL Basis
+                "prompthero/openjourney-v4"         # 🎭 Künstlerischer Stil
             ]
             
             for model_idx, model in enumerate(models):
@@ -154,33 +155,49 @@ class FashionGenerator:
                     API_URL = f"https://api-inference.huggingface.co/models/{model}"
                     headers = {"Authorization": f"Bearer {api_token}"}
                     
-                    # Model-spezifische Parameter
+                    # Model-spezifische Parameter für optimale Fashion-Ergebnisse
                     if "turbo" in model.lower():
                         # Turbo-Modelle: Sehr wenige Steps für Geschwindigkeit
                         payload = {
                             "inputs": prompt,
                             "parameters": {
-                                "negative_prompt": "blurry, bad quality, distorted, amateur, cartoon, anime, low resolution, deformed",
-                                "num_inference_steps": 2 if "sdxl-turbo" in model else 4,  # Turbo braucht nur 1-4 Steps!
-                                "guidance_scale": 0.0 if "sdxl-turbo" in model else 1.0,   # Turbo ohne Guidance
+                                "negative_prompt": "blurry, bad quality, distorted, amateur, cartoon, anime, low resolution, deformed, ugly, bad anatomy",
+                                "num_inference_steps": 2 if "sdxl-turbo" in model else 4,  
+                                "guidance_scale": 0.0 if "sdxl-turbo" in model else 1.0,   
                                 "width": 512,
                                 "height": 768
                             }
                         }
                         model_name = "SDXL-Turbo ⚡" if "sdxl" in model else "SD-Turbo ⚡"
+                        
+                    elif "realvis" in model.lower() or "realistic_vision" in model.lower():
+                        # RealVIS: Optimiert für Fotorealismus
+                        payload = {
+                            "inputs": prompt,
+                            "parameters": {
+                                "negative_prompt": "blurry, bad quality, distorted, amateur, cartoon, anime, low resolution, deformed, ugly, bad anatomy, worst quality, low quality, normal quality, lowres, normal quality, ((monochrome)), ((grayscale)), skin spots, acnes, skin blemishes, age spot, glans, extra fingers, fewer fingers, ((watermark)), (white letters)",
+                                "num_inference_steps": 25,  # Mehr Steps für Realismus
+                                "guidance_scale": 7.0,      # Optimiert für RealVIS
+                                "width": 512,
+                                "height": 768,
+                                "scheduler": "DPMSolverMultistepScheduler"  # Besserer Scheduler für Realismus
+                            }
+                        }
+                        model_name = "RealVIS 📸" if "realvis" in model.lower() else "Realistic Vision 📷"
+                        
                     else:
                         # Standard-Modelle: Normale Parameter
                         payload = {
                             "inputs": prompt,
                             "parameters": {
-                                "negative_prompt": "blurry, bad quality, distorted, amateur, cartoon, anime, low resolution, deformed",
+                                "negative_prompt": "blurry, bad quality, distorted, amateur, cartoon, anime, low resolution, deformed, ugly, bad anatomy",
                                 "num_inference_steps": 20 if "xl" in model else 25,
                                 "guidance_scale": 7.5,
                                 "width": 512,
                                 "height": 768
                             }
                         }
-                        model_name = model.split('/')[-1].replace('-', ' ').title()
+                        model_name = model.split('/')[-1].replace('-', ' ').replace('_', ' ').title()
                     
                     st.info(f"🎨 Versuche {model_name} (Model {model_idx + 1}/{len(models)})...")
                     
